@@ -294,7 +294,7 @@ class LevelRecord(Record):
             print(self.prop["E"])
             print(self.prop["DE"])
             raise
-        self.ang_mom = self.prop["J"]
+        self.ang_mom = ang_mom_parser(self.prop["J"])
         self.half_life = Quantity(self.prop["T"], self.prop["DT"])
         self.questionable = (self.prop["Q"] == "?")
         self.expected = (self.prop["Q"] == "S")
@@ -488,3 +488,115 @@ class Nucleus:
                 if level.metastable:
                     yield level
 
+
+def rec_bracket_parser(s, i=0):
+    res = []
+    ang_mom = ""
+    parity = None
+    while i < len(s):
+        if s[i] == '(' or s[i] == '[':
+            if i+2 < len(s) and s[i+2] == ")" and s[i+1] in "+-":
+                parity = s[i+1]
+                res.append((ang_mom, parity))
+                ang_mom = ""
+                parity = None
+                i += 3
+                continue
+            if ang_mom:
+                res.append((ang_mom, parity))
+            ang_mom = ""
+            parity = None
+            i, sub_res = rec_bracket_parser(s, i+1)
+            if i < len(s) and s[i] in "+-":
+                for ang_mom_sub, parity_sub in sub_res:
+                    res.append((ang_mom_sub, s[i]))
+            else:
+                res.extend(sub_res)
+        elif s[i] == ')' or s[i] == ']':
+            if ang_mom:
+                res.append((ang_mom, parity))
+            ang_mom = ""
+            parity = None
+            return i+1, res
+        else:
+            if s[i] in "+-":
+                parity = s[i]
+            elif s[i] == ",":
+                if ang_mom:
+                    res.append((ang_mom, parity))
+                ang_mom = ""
+                parity = None
+            else:
+                ang_mom += s[i]
+            i += 1
+    if ang_mom:
+        res.append((ang_mom, parity))
+    return i, res
+
+def ang_mom_parser(ang_mom: str) -> List[Tuple[str, Optional[str]]]:
+    """
+    Parse simple angular momement definitions such as 5/2+ or 4,5,6(-).
+    More advanced definitions (silently) result in garbage.
+    """
+    res = []
+    for fragment, parity in rec_bracket_parser(ang_mom)[1]:
+        for J in ang_mom_range_to_tuple(fragment):
+            res.append(AngularMoment(J, parity))
+    return res
+
+def ang_mom_to_tuple(ang_mom):
+    if "/" in ang_mom:
+        a, b = ang_mom.split('/', 1)
+    else:
+        a, b = ang_mom, 1
+    return int(a), int(b)
+
+def ang_mom_range_to_tuple(ang_mom):
+    try:
+        if " TO " in ang_mom:
+            start, stop = ang_mom.split(" TO ", 1)
+        elif ":" in ang_mom:
+            start, stop = ang_mom.split(":", 1)
+        else:
+            yield ang_mom_to_tuple(ang_mom)
+            return
+        start, div = ang_mom_to_tuple(start)
+        stop, _ = ang_mom_to_tuple(stop)
+        for i in range(start, stop + div, div):
+            yield (i, div)
+    except:
+        yield ang_mom
+    
+class AngularMoment:
+    def __init__(self, ang_mom, parity=None):
+        self.div = None
+        try:
+            self.ang_mom, self.div = ang_mom
+            self.val = self.ang_nom/self.div
+        except:
+            self.ang_mom = ang_mom
+            self.val = None
+        self.parity = parity
+
+    def __repr__(self):
+        if self.div != 1:
+            J = f"{self.ang_mom}/{self.div}"
+        else:
+            J = f"{self.ang_mom}"
+        if self.parity:
+            return f"{J}{self.parity}"
+        return J
+    
+    def __eq__(self, other):
+        if isinstance(other, AngularMoment):
+            return (self.ang_mom == other.ang_mom and 
+                    self.parity == other.parity)
+        elif isinstance(other, tuple):
+            if self.parity != other[1]:
+                return False
+            if self.div:
+                ang_mom = self.ang_mom/self.div
+                return abs(ang_mom - float(other[0])) < 0.1
+            return self.ang_mom == other[0]
+    
+    

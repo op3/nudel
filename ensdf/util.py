@@ -239,9 +239,9 @@ def nucid_from_az(nucleus):
             name = f"{1:02d}"[-2:]
         else:
             name = ELEMENTS[Z].upper()
-        return f"{mass}{name}"
+        return f"{mass}{name:2}"
     except TypeError:
-        return f"{mass}"
+        return f"{mass:3}  "
 
 TIME_UNITS = {
     "Y": 365. * 86400., # Definition of year is unclear

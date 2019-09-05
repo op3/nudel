@@ -77,8 +77,8 @@ class ENSDFFileProvider(ENSDFProvider):
             for line in ensdf_file:
                 if (not found and line[5:9] == '    ' and
                         name == line[9:39].strip() and
-                        (nucid_from_az(nucleus) in line[0:5].strip() or
-                         (alt_nucid and alt_nucid in line[0:5].strip()))):
+                        (nucid_from_az(nucleus) in line[0:5] or
+                         (alt_nucid and alt_nucid in line[0:5]))):
                     found = True
                 if found:
                     res += line
@@ -97,7 +97,7 @@ class ENSDFFileProvider(ENSDFProvider):
             for line in ensdf_file:
                 if (not found and line[5:9] == '    ' and
                         "ADOPTED LEVELS" == line[9:23] and
-                        nucid_from_az(nucleus) in line[0:5].strip()):
+                        nucid_from_az(nucleus) in line[0:5]):
                     found = True
                 if found:
                     res += line
