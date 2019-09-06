@@ -26,11 +26,10 @@ By default, nuclstruc searches in `$XDG_DATA_HOME/ensdf` for the files (usually,
 
 # Requirements
 
-- python>=3.7
+- python>=3.6
 - [uncertainties](https://pythonhosted.org/uncertainties/)
-- [scipy](https://www.scipy.org/)
 
-I expect to be able to drop both the `uncertainy` and `scipy` dependencies in a future version and add support for python3.6
+I expect to be able to drop the `uncertainties` dependencies in a future version.
 
 
 # Usage

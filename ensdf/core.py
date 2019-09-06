@@ -19,25 +19,19 @@
 
 """Python interface for ENSDF nuclear data"""
 
-from __future__ import annotations
-
 from datetime import datetime
 import re
 from typing import Union, List, Tuple, Optional
-
-from scipy.constants import physical_constants
 
 from .provider import ENSDFProvider, ENSDFFileProvider
 from .util import nucid_from_az, az_from_nucid, Quantity
 
 class ENSDF:
-    def __init__(self, provider: ENSDFProvider = None) -> None:
+    def __init__(self, provider: 'ENSDFProvider' = None) -> None:
         self.provider = provider or ENSDFFileProvider()
-        self.datasets = dict()
-        for k in self.provider.get_all_dataset_names():
-            self.datasets[k] = None
+        self.datasets = dict.fromkeys(self.provider.index)
 
-    def get_dataset(self, nucleus: Tuple[int, Optional[int]], name: str) -> Dataset:
+    def get_dataset(self, nucleus: Tuple[int, Optional[int]], name: str) -> 'Dataset':
         if (nucleus, name) not in self.datasets:
             raise KeyError("Dataset not found")
         # TODO: activate cache
@@ -46,7 +40,7 @@ class ENSDF:
             self.datasets[(nucleus, name)] = Dataset(self, res)
         return self.datasets[(nucleus, name)]
     
-    def get_adopted_levels(self, nucleus: Tuple[int, int]) -> Dataset:
+    def get_adopted_levels(self, nucleus: Tuple[int, int]) -> 'Dataset':
         # TODO: activate cache
         if (nucleus, "ADOPTED LEVELS") not in self.datasets or True:
             res = Dataset(self, self.provider.get_adopted_levels(nucleus))
@@ -430,9 +424,8 @@ class GammaRecord(DecayRecord):
         elif self.orig_level:
             energy_gamma = self.energy.val
             mass, _ = az_from_nucid(self.dataset.nucid)
-            amu = physical_constants[
-                "atomic mass constant energy equivalent in MeV"][0]
-            energy_i = (energy_gamma * (1 + 2* (.001 * energy_gamma) / (mass * amu)))
+            amu = 931494.10242  # From CODATA 2018
+            energy_i = (energy_gamma * (1 + 2 * (energy_gamma) / (mass * amu)))
             dest_energy = self.orig_level.energy.val - energy_i
         else:
             return

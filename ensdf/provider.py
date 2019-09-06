@@ -22,92 +22,83 @@
 
 from pathlib import Path
 import os
+from os.path import getmtime
 from abc import ABC, abstractmethod
 import re
+import pickle
+import lzma
 from typing import Union, List, Tuple, Optional
 
 from .util import nucid_from_az, az_from_nucid, Quantity
 
 class ENSDFProvider(ABC):
     @abstractmethod
-    def get_dataset(self, nucleus: str, name: str) -> str:
+    def get_dataset(self, nucleus: Tuple[int, Optional[int]], name: str) -> str:
         """
         returns a raw ENSDF dataset
-
-        nucleus: The nucleus of interest (e.g. "22NA")
-        name: The name of the dataset (e.g. "ADOPTED LEVELS")
         """
         pass
-    
-    @abstractmethod
-    def get_all_dataset_names(self) -> List[str]:
-        pass
 
+    @abstractmethod
+    def get_adopted_levels(self, nucleus: Tuple[int, int]) -> str:
+        """
+        returns the raw ADOPTED LEVELS[, GAMMAS] dataset of a nucleus
+        """
+        pass
 
 class ENSDFFileProvider(ENSDFProvider):
     def __init__(self, folder: Union[str, Path] = None) -> None:
-        if folder is None:
+        if not folder:
             folder = Path(os.getenv("XDG_DATA_HOME",
                 Path.home()/".local"/"share"))/"ensdf"
         if isinstance(folder, str):
             folder = Path(folder)
         self.folder = folder
+        self.cachedir = Path(os.getenv("XDG_CACHE_HOME",
+            Path.home()/".cache"))/"nuclstruc"
+        self.cachedir.mkdir(exist_ok=True)
+        self.index = dict()
+        self.gen_index()
+        self.adopted_levels = dict()
+        for nucleus, name in self.index.keys():
+            if "ADOPTED LEVELS" in name:
+                self.adopted_levels[nucleus] = name
 
-    def get_datasets(self, mass: int) -> List[Tuple[Tuple[int, Optional[int]], str]]:
-        headers = []
-        with open(self.folder/f"ensdf.{mass:03d}", "r") as ensdf_file:
-            next_is_header = True
-            for line in ensdf_file:
-                if next_is_header:
-                    nucid = line[0:5].strip()
-                    mass, Z = az_from_nucid(nucid)
-                    dataset_id = line[9:39].strip()
-                    headers.append(((mass, Z), dataset_id))
-                next_is_header = (line.strip() == "")
-        return headers
+    def gen_index(self):
+        """
+        Generate index of ENSDF datasets and file position
+        """
+        ensdf_files = list(self.folder.glob('ensdf.???'))
+        index_file = self.cachedir/"ensdf_index.pickle.xz"
+        last_modified = max([getmtime(f_path) for f_path in ensdf_files])
+        if index_file.is_file() and getmtime(index_file) > last_modified:
+            with lzma.open(index_file, 'r') as index:
+                self.index = pickle.load(index)
+                return
 
-
+        for f_path in ensdf_files:
+            with open(f_path, 'r') as f:
+                linestart = f.tell()
+                line = f.readline()
+                while line:
+                    if line[2] != ' ' and line[5:9] == '    ':
+                        nucleus = az_from_nucid(line[0:5])
+                        self.index[(nucleus, line[9:39].strip())] = linestart
+                    linestart = f.tell()
+                    line = f.readline()
+        if self.index:
+            with lzma.open(index_file, 'wb') as index:
+                pickle.dump(self.index, index, protocol=pickle.HIGHEST_PROTOCOL)
 
     def get_dataset(self, nucleus: Tuple[int, Optional[int]], name: str) -> str:
         mass, Z = nucleus
         res = ""
-        alt_nucid = f"{mass:03d}{Z%100:02d}" if Z else None
-        with open(self.folder/f"ensdf.{mass:03d}", "r") as ensdf_file:
-            found = False
-            for line in ensdf_file:
-                if (not found and line[5:9] == '    ' and
-                        name == line[9:39].strip() and
-                        (nucid_from_az(nucleus) in line[0:5] or
-                         (alt_nucid and alt_nucid in line[0:5]))):
-                    found = True
-                if found:
-                    res += line
-                    if line.strip() == "":
-                        break
-            else:
-                raise FileNotFoundError(
-                    f"ENSDF dataset '{name}' for nucleus '{nucleus}' not found.")
-        return res
+        with open(self.folder/f"ensdf.{mass:03d}", "r") as f:
+            f.seek(self.index[nucleus, name])
+            for line in f:
+                if line.strip() == "":
+                    return res
+                res += line
     
-    def get_adopted_levels(self, nucleus: Tuple[int, int]):
-        mass, Z = nucleus
-        res = ""
-        with open(self.folder/f"ensdf.{mass:03d}", "r") as ensdf_file:
-            found = False
-            for line in ensdf_file:
-                if (not found and line[5:9] == '    ' and
-                        "ADOPTED LEVELS" == line[9:23] and
-                        nucid_from_az(nucleus) in line[0:5]):
-                    found = True
-                if found:
-                    res += line
-                    if line.strip() == "":
-                        break
-            else:
-                raise FileNotFoundError(
-                    f"ENSDF adopted levels for nucleus '{nucleus}' not found.")
-        return res
-    
-    def get_all_dataset_names(self) -> List[str]:
-        for mass in range(1, 300):
-            yield from self.get_datasets(mass)
+    def get_adopted_levels(self, nucleus: Tuple[int, int]) -> str:
+        return self.get_dataset(nucleus, self.adopted_levels[nucleus])
