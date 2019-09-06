@@ -20,4 +20,6 @@
 """Python interface for ENSDF nuclear data"""
 
 from .core import (
-    ENSDF, Nucleus)
+    Nuclide, get_active_ensdf)
+
+ensdf = get_active_ensdf()

@@ -21,43 +21,98 @@
 
 from datetime import datetime
 import re
-from typing import Union, List, Tuple, Optional
+from typing import Iterator, List, Optional, Tuple, Union
+import warnings
 
 from .provider import ENSDFProvider, ENSDFFileProvider
 from .util import nucid_from_az, az_from_nucid, Quantity
 
+
 class ENSDF:
-    def __init__(self, provider: 'ENSDFProvider' = None) -> None:
+    active_ensdf = None
+    def __init__(self, provider: Optional['ENSDFProvider'] = None):
+        """Create ENSDF instance
+
+        Args:
+            provider: provider for ENSDF database
+        """
         self.provider = provider or ENSDFFileProvider()
         self.datasets = dict.fromkeys(self.provider.index)
+        self._old_active = None
 
-    def get_dataset(self, nucleus: Tuple[int, Optional[int]], name: str) -> 'Dataset':
-        if (nucleus, name) not in self.datasets:
+    def get_dataset(self, nuclide: Tuple[int, Optional[int]],
+                    name: str) -> 'Dataset':
+        """Returns specified dataset.
+
+        Args:
+            nuclide: Nuclide given in (nucleons, protons) format.
+                Use protons=None for generic mass-specific dataset.
+            name: Name of the ENSDF dataset
+        
+        Returns:
+            Dataset that was requested.
+        """
+        if (nuclide, name) not in self.datasets:
             raise KeyError("Dataset not found")
         # TODO: activate cache
-        if self.datasets[(nucleus, name)] is None or True:
-            res = self.provider.get_dataset(nucleus, name)
-            self.datasets[(nucleus, name)] = Dataset(self, res)
-        return self.datasets[(nucleus, name)]
-    
-    def get_adopted_levels(self, nucleus: Tuple[int, int]) -> 'Dataset':
+        if self.datasets[(nuclide, name)] is None or True:
+            res = self.provider.get_dataset(nuclide, name)
+            self.datasets[(nuclide, name)] = Dataset(res)
+        return self.datasets[(nuclide, name)]
+
+    def get_adopted_levels(self, nuclide: Tuple[int, int]) -> 'Dataset':
+        """Get adopted levels dataset of a nuclide
+
+        Args:
+            nuclide: Nuclide given in (nucleons, protons) format
+
+        Returns:
+            Dataset "ADOPTED LEVELS[…]" of given nuclide
+        """
         # TODO: activate cache
-        if (nucleus, "ADOPTED LEVELS") not in self.datasets or True:
-            res = Dataset(self, self.provider.get_adopted_levels(nucleus))
-            self.datasets[(nucleus, "ADOPTED LEVELS")] = res
-        return self.datasets[(nucleus, "ADOPTED LEVELS")]
+        if (nuclide, "ADOPTED LEVELS") not in self.datasets or True:
+            res = Dataset(self.provider.get_adopted_levels(nuclide))
+            self.datasets[(nuclide, "ADOPTED LEVELS")] = res
+        return self.datasets[(nuclide, "ADOPTED LEVELS")]
 
-    def get_datasets_by_mass(self, mass: int) -> List[str]:
-        return self.provider.get_datasets(mass)
- 
-    def get_datasets_by_nuclide(self, mass: str) -> List[str]:
-        pass
+    def get_datasets_by_nuclide(
+            self, nuclide: Tuple[int, Optional[int]]) -> List[str]:
+        """Get names of all datasets of a nuclide
 
+        Args:
+            nuclide: Nuclide given in (nucleons, protons) format.
+                Use protons=None for generic mass-specific dataset.
+
+        Returns:
+            List of dataset identifier names for given nuclide
+        """
+        res = []
+        for dnuclide, name in self.datasets.keys():
+            if dnuclide == nuclide:
+                res.append(name)
+        return res
+
+    def get_indexed_nuclides(self) -> List[Tuple[int, int]]:
+        """Get all nuclides with corresponding adopted levels datasets.
+
+        Returns:
+            A list of tuples, each containing the nucleon number and
+            proton number of an indexed nuclide.
+        """
+        return self.provider.adopted_levels.keys()
+    
+    def __enter__(self):
+        self._old_active = ENSDF.active_ensdf
+        ENSDF.active_ensdf = self
+
+    def __exit__(self, type, value, traceback):
+        ENSDF.active_ensdf = self._old_active
+        self._old_active = None
 
 
 class Dataset:
-    def __init__(self, ensdf: ENSDF, dataset_plain: str):
-        self.ensdf = ENSDF
+    def __init__(self, dataset_plain: str):
+        self.ensdf = get_active_ensdf()
         self.header, *self.raw = dataset_plain.split("\n")
         self.nucid = self.header[0:5].strip()
         self.dataset_id = self.header[9:39].strip()
@@ -86,7 +141,7 @@ class Dataset:
             raise
         self.records.append(rec)
         return rec
-    
+
     def _add_level(self, record, comments, xref):
         lvl = LevelRecord(self, record, comments, xref)
         self.levels.append(lvl)
@@ -102,31 +157,36 @@ class Dataset:
         header = True
 
         for line in self.raw[:-1]:
+            flag_cont, flag_com, flag_rectype, flag_particle = line[5:9]
             if header:
-                if line[6].upper() in ["C", "D","T"]:
-                    self.comments.append(line)
+                if flag_com.lower() in "cdt":
+                    if flag_cont != " ":
+                        self.comments[-1].append(line)
+                    else:
+                        self.comments.append([line])
                 else:
-                    if (line[7].lower() in "bagel" or
-                        (line[7] in " D" and line[8] in "PAN")):
+                    if (flag_rectype in "BAGEL" or
+                        (flag_rectype in " D" and flag_particle in "PAN")):
                         header = False
-                    elif line[7] == "X":
-                        self.cross_references.append(CrossReferenceRecord(self, line))
-                    elif line[7] == "P":
+                    elif flag_rectype == "X":
+                        self.cross_references.append(
+                            CrossReferenceRecord(self, line))
+                    elif flag_rectype == "P":
                         self.parents.append(ParentRecord(self, line))
-                    elif line[7] == "R":
+                    elif flag_rectype == "R":
                         self.references.append(ReferenceRecord(self, line))
-                    elif line[7].upper() == "Q":
+                    elif flag_rectype.upper() == "Q":
                         self.qrecords.append(QValueRecord(self, line))
-                    elif line[7].upper() == "H":
+                    elif flag_rectype.upper() == "H":
                         history += line[9:80] + " "
-                    elif line[7].upper() == "N":
+                    elif flag_rectype.upper() == "N":
                         pass # TODO: Normalization
             if header:
                 continue
 
             try:
-                if ((line[7].lower() in "bagel" or
-                    (line[7] in " D" and line[8] in "PAN"))
+                if ((flag_rectype in "BAGEL" or
+                    (flag_rectype in " D" and flag_particle in "PAN"))
                     and line[5:7] == "  "):
                     if record:
                         if record[0][7] == "L":
@@ -139,14 +199,15 @@ class Dataset:
                     record.append(line)
                 elif line[5:7] == "X ":
                     xref.append(line)
-                elif line[6] == " ":
+                elif flag_com == " ":
                     record.append(line)
-                elif line[5:7].lower() in [" c", " d", " t"]:
-                    comments.append([line])
-                elif line[6].lower() in "cdt":
-                    comments[-1].append(line)
+                elif flag_com.lower() in "cdt":
+                    if flag_cont != " ":
+                        comments[-1].append(line)
+                    else:
+                        comments.append([line])
                 else:
-                    # This is a broken record
+                    # This is a broken record!
                     record.append(line)
             except (IndexError, ValueError):
                 print(record)
@@ -212,8 +273,10 @@ class Record(BaseRecord):
                             return
                     for abbr in ["GT", "LT", "GE", "LE", "AP", "CA", "SY"]:
                         if f" {abbr} " in entry:
-                            quant, quant, value = entry.split(" ", maxsplit=2)
-                            self.prop[quant.strip()] = value.strip() + f" {quant}"
+                            quant, quant, value = entry.split(
+                                " ", maxsplit=2)
+                            self.prop[
+                                quant.strip()] = f"{value.strip()} {quant}"
                             return
                     if entry[-1] == "?":
                         self.prop[entry[:-1]] = "?"
@@ -277,7 +340,7 @@ class LevelRecord(Record):
         self.prop["MS"] = record[0][77:79].strip()
         self.prop["Q"] = record[0][79].strip()
         self.load_prop(record[1:])
-        
+
         self.decays = []
         self.populating = []
 
@@ -317,7 +380,7 @@ class BetaRecord(DecayRecord):
         self.prop["UN"] = record[0][77:79].strip()
         self.prop["Q"] = record[0][79].strip()
         self.load_prop(record[1:])
-        
+
         self.energy = Quantity(self.prop["E"], self.prop["DE"])
         self.questionable = (self.prop["Q"] == "?")
         self.expected = (self.prop["Q"] == "S")
@@ -405,7 +468,8 @@ class GammaRecord(DecayRecord):
         self.multipolarity = self.prop["M"]
         self.mixing_ratio = Quantity(self.prop["MR"], self.prop["DMR"])
         self.conversion_coeff = Quantity(self.prop["CC"], self.prop["DCC"])
-        self.rel_tot_trans_intensity = Quantity(self.prop["TI"], self.prop["DTI"])
+        self.rel_tot_trans_intensity = Quantity(self.prop["TI"],
+                                                self.prop["DTI"])
         self.questionable = (self.prop["Q"] == "?")
         self.expected = (self.prop["Q"] == "S")
 
@@ -415,7 +479,7 @@ class GammaRecord(DecayRecord):
                 self.attr[k] = Quantity(v, has_unit=False)
 
         self._determine_dest_level()
-    
+
     def _determine_dest_level(self):
         if "FL" in self.prop:
             if self.prop["FL"] == "?":
@@ -425,13 +489,14 @@ class GammaRecord(DecayRecord):
             energy_gamma = self.energy.val
             mass, _ = az_from_nucid(self.dataset.nucid)
             amu = 931494.10242  # From CODATA 2018
-            energy_i = (energy_gamma * (1 + 2 * (energy_gamma) / (mass * amu)))
+            energy_i = energy_gamma * (1 + 2 * energy_gamma / (mass * amu))
             dest_energy = self.orig_level.energy.val - energy_i
         else:
             return
         try:
             self.dest_level = min(
-                [l for l in self.dataset.levels if l.energy.offset == self.energy.offset],
+                [l for l in self.dataset.levels
+                 if l.energy.offset == self.energy.offset],
                 key=lambda x: abs(x.energy.val - dest_energy))
             self.dest_level.populating.append(self)
         except ValueError:
@@ -465,15 +530,21 @@ def get_record_type(record):
     if record[0][7] in " D" and record[0][8] in "PAN":
         return ParticleRecord
     else:
-        raise NotImplementedError(f"Unknown record with type '{record[0][7]}': '{record[0]}'")
+        raise NotImplementedError(
+            f"Unknown record with type '{record[0][7]}': '{record[0]}'")
 
 
-class Nucleus:
-    def __init__(self, ensdf: ENSDF, mass: int, protons: int):
-        self.ensdf = ensdf
-        self.adopted_levels = ensdf.get_adopted_levels((mass, protons))
-    
-    def get_isomers(self):
+class Nuclide:
+    def __init__(self, mass: int, protons: int):
+        self.ensdf = get_active_ensdf()
+        self.adopted_levels = self.ensdf.get_adopted_levels((mass, protons))
+
+    def get_isomers(self) -> Iterator['LevelRecord']:
+        """Generator that yields ground state and metastable states.
+
+        Yields:
+            LevelRecords for ground state and metastable states.
+        """
         if self.adopted_levels.levels[0]:
             yield self.adopted_levels.levels[0]
         if self.adopted_levels.levels[1:]:
@@ -559,7 +630,7 @@ def ang_mom_range_to_tuple(ang_mom):
             yield (i, div)
     except:
         yield ang_mom
-    
+
 class AngularMoment:
     def __init__(self, ang_mom, parity=None):
         self.div = None
@@ -579,10 +650,10 @@ class AngularMoment:
         if self.parity:
             return f"{J}{self.parity}"
         return J
-    
+
     def __eq__(self, other):
         if isinstance(other, AngularMoment):
-            return (self.ang_mom == other.ang_mom and 
+            return (self.ang_mom == other.ang_mom and
                     self.parity == other.parity)
         elif isinstance(other, tuple):
             if self.parity != other[1]:
@@ -591,5 +662,8 @@ class AngularMoment:
                 ang_mom = self.ang_mom/self.div
                 return abs(ang_mom - float(other[0])) < 0.1
             return self.ang_mom == other[0]
-    
-    
+
+def get_active_ensdf():
+    if not ENSDF.active_ensdf:
+        ENSDF.active_ensdf = ENSDF()
+    return ENSDF.active_ensdf

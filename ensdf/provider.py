@@ -49,8 +49,10 @@ class ENSDFProvider(ABC):
 class ENSDFFileProvider(ENSDFProvider):
     def __init__(self, folder: Union[str, Path] = None) -> None:
         if not folder:
-            folder = Path(os.getenv("XDG_DATA_HOME",
-                Path.home()/".local"/"share"))/"ensdf"
+            folder = os.getenv(
+                "ENSDF_PATH",
+                Path(os.getenv("XDG_DATA_HOME",
+                     Path.home()/".local"/"share"))/"ensdf")
         if isinstance(folder, str):
             folder = Path(folder)
         self.folder = folder

@@ -22,6 +22,7 @@ You have to download three files ending in `_099.zip`, `_199.zip` and `_299.zip`
 These files correspond to the evaluated nuclei in the mass ranges 1–99, 100–199 and 200–299.
 Extract all files into a single folder.
 By default, nuclstruc searches in `$XDG_DATA_HOME/ensdf` for the files (usually, this is `~/.local/share/ensdf`).
+Alternatively, you can use `$ENSDF_PATH` to point to the correct directory.
 
 
 # Requirements
@@ -29,7 +30,7 @@ By default, nuclstruc searches in `$XDG_DATA_HOME/ensdf` for the files (usually,
 - python>=3.6
 - [uncertainties](https://pythonhosted.org/uncertainties/)
 
-I expect to be able to drop the `uncertainties` dependencies in a future version.
+I expect to be able to drop the `uncertainties` dependency in a future version.
 
 
 # Usage
@@ -37,10 +38,9 @@ I expect to be able to drop the `uncertainties` dependencies in a future version
 This is a minimal usage example, documentation will be improved in a future version:
 
 ```python
-    from ensdf import ENSDF, Nucleus
+from ensdf import Nucleus
 
-    ensdf = ENSDF()
-    molybdenum94 = Nucleus(ensdf, 94, 42)
+molybdenum94 = Nucleus(ensdf, 94, 42)
 ```
 
 
