@@ -286,6 +286,7 @@ class Record(BaseRecord):
 
 class QValueRecord(BaseRecord):
     def __init__(self, dataset, line):
+        # TODO: Use prop instead!
         self.q_beta_minus = (line[9:19].strip(), line[19:21].strip())
         self.neutron_separation = (line[21:29].strip(), line[29:31].strip())
         self.proton_separation = (line[31:39].strip(), line[39:41].strip())
@@ -316,11 +317,14 @@ class ParentRecord(Record):
         super().__init__(dataset, record, None, None)
         self.prop["E"] = record[0][9:19].strip()
         self.prop["DE"] = record[0][19:21].strip()
+        self.prop["E"] += " " + self.prop["DE"]
         self.prop["J"] = record[0][21:39].strip()
         self.prop["T"] = record[0][39:49].strip()
         self.prop["DT"] = record[0][49:55].strip()
+        self.prop["T"] += " " + self.prop["DT"]
         self.prop["QP"] = record[0][64:74].strip()
         self.prop["DQP"] = record[0][74:76].strip()
+        self.prop["QP"] += " " + self.prop["DQP"]
         self.prop["ION"] = record[0][76:80].strip()
         self.load_prop(record[1:])
 
@@ -330,12 +334,15 @@ class LevelRecord(Record):
         super().__init__(dataset, record, comments, xref)
         self.prop["E"] = record[0][9:19].strip()
         self.prop["DE"] = record[0][19:21].strip()
+        self.prop["E"] += " " + self.prop["DE"]
         self.prop["J"] = record[0][21:39].strip()
         self.prop["T"] = record[0][39:49].strip()
         self.prop["DT"] = record[0][49:55].strip()
+        self.prop["T"] += " " + self.prop["DT"]
         self.prop["L"] = record[0][55:64].strip()
         self.prop["S"] = record[0][64:74].strip()
         self.prop["DS"] = record[0][74:76].strip()
+        self.prop["S"] += " " + self.prop["DS"]
         self.prop["C"] = record[0][76].strip()
         self.prop["MS"] = record[0][77:79].strip()
         self.prop["Q"] = record[0][79].strip()
@@ -346,17 +353,17 @@ class LevelRecord(Record):
 
         self.attrs = {}
         try:
-            self.energy = Quantity(self.prop["E"], self.prop["DE"])
+            self.energy = Quantity(self.prop["E"])
         except (IndexError, ValueError):
             print(self.prop["E"])
             print(self.prop["DE"])
             raise
         self.ang_mom = ang_mom_parser(self.prop["J"])
-        self.half_life = Quantity(self.prop["T"], self.prop["DT"])
+        self.half_life = Quantity(self.prop["T"])
         self.questionable = (self.prop["Q"] == "?")
         self.expected = (self.prop["Q"] == "S")
         self.metastable = (self.prop["MS"] and self.prop["MS"][0] == "M")
-        self.spec_strength = Quantity(self.prop["S"], self.prop["DS"])
+        self.spec_strength = Quantity(self.prop["S"])
 
 
     def add_decay(self, decay):
@@ -372,16 +379,19 @@ class BetaRecord(DecayRecord):
         super().__init__(dataset, record, comments, xref, dest_level)
         self.prop["E"] = record[0][9:19].strip()
         self.prop["DE"] = record[0][19:21].strip()
+        self.prop["E"] += " " + self.prop["DE"]
         self.prop["IB"] = record[0][21:29].strip()
         self.prop["DIB"] = record[0][29:31].strip()
+        self.prop["IB"] += " " + self.prop["DIB"]
         self.prop["LOGFT"] = record[0][41:49].strip()
         self.prop["DFT"] = record[0][49:55].strip()
+        self.prop["LOGFT"] += " " + self.prop["DFT"]
         self.prop["C"] = record[0][76].strip()
         self.prop["UN"] = record[0][77:79].strip()
         self.prop["Q"] = record[0][79].strip()
         self.load_prop(record[1:])
 
-        self.energy = Quantity(self.prop["E"], self.prop["DE"])
+        self.energy = Quantity(self.prop["E"])
         self.questionable = (self.prop["Q"] == "?")
         self.expected = (self.prop["Q"] == "S")
 
@@ -391,14 +401,19 @@ class ECRecord(DecayRecord):
         super().__init__(dataset, record, comments, xref, dest_level)
         self.prop["E"] = record[0][9:19].strip()
         self.prop["DE"] = record[0][19:21].strip()
+        self.prop["E"] += " " + self.prop["DE"]
         self.prop["IB"] = record[0][21:29].strip()
         self.prop["DIB"] = record[0][29:31].strip()
+        self.prop["IB"] += " " + self.prop["DIB"]
         self.prop["IE"] = record[0][31:39].strip()
         self.prop["DIE"] = record[0][39:41].strip()
+        self.prop["IE"] += " " + self.prop["DIE"]
         self.prop["LOGFT"] = record[0][41:49].strip()
         self.prop["DFT"] = record[0][49:55].strip()
+        self.prop["LOGFT"] += " " + self.prop["DFT"]
         self.prop["TI"] = record[0][64:74].strip()
         self.prop["DTI"] = record[0][74:76].strip()
+        self.prop["TI"] += " " + self.prop["DTI"]
         self.prop["C"] = record[0][76].strip()
         self.prop["UN"] = record[0][77:79].strip()
         self.prop["Q"] = record[0][79].strip()
@@ -410,10 +425,13 @@ class AlphaRecord(DecayRecord):
         super().__init__(dataset, record, comments, xref, dest_level)
         self.prop["E"] = record[0][9:19].strip()
         self.prop["DE"] = record[0][19:21].strip()
+        self.prop["E"] += " " + self.prop["DE"]
         self.prop["IA"] = record[0][21:29].strip()
         self.prop["DIA"] = record[0][29:31].strip()
+        self.prop["IA"] += " " + self.prop["DIA"]
         self.prop["HF"] = record[0][31:39].strip()
         self.prop["DHF"] = record[0][39:41].strip()
+        self.prop["HF"] += " " + self.prop["DHF"]
         self.prop["C"] = record[0][76].strip()
         self.prop["Q"] = record[0][79].strip()
         self.load_prop(record[1:])
@@ -426,11 +444,14 @@ class ParticleRecord(DecayRecord):
         self.prop["Particle"] = record[0][8]
         self.prop["E"] = record[0][9:19].strip()
         self.prop["DE"] = record[0][19:21].strip()
+        self.prop["E"] += " " + self.prop["DE"]
         self.prop["IP"] = record[0][21:29].strip()
         self.prop["DIP"] = record[0][29:31].strip()
+        self.prop["IP"] += " " + self.prop["DIP"]
         self.prop["EI"] = record[0][31:39].strip()
         self.prop["T"] = record[0][39:49].strip()
         self.prop["DT"] = record[0][49:55].strip()
+        self.prop["T"] += " " + self.prop["DT"]
         self.prop["L"] = record[0][55:64].strip()
         self.prop["C"] = record[0][76].strip()
         self.prop["COIN"] = record[0][78].strip()
@@ -449,27 +470,31 @@ class GammaRecord(DecayRecord):
             self.orig_level.add_decay(self)
         self.prop["E"] = record[0][9:19].strip()
         self.prop["DE"] = record[0][19:21].strip()
+        self.prop["E"] += " " + self.prop["DE"]
         self.prop["RI"] = record[0][21:29].strip()
         self.prop["DRI"] = record[0][29:31].strip()
+        self.prop["RI"] += " " + self.prop["DRI"]
         self.prop["M"] = record[0][31:41].strip()
         self.prop["MR"] = record[0][41:49].strip()
         self.prop["DMR"] = record[0][49:55].strip()
+        self.prop["MR"] += " " + self.prop["DMR"]
         self.prop["CC"] = record[0][55:62].strip()
         self.prop["DCC"] = record[0][62:64].strip()
+        self.prop["CC"] += " " + self.prop["DCC"]
         self.prop["TI"] = record[0][64:74].strip()
         self.prop["DTI"] = record[0][74:76].strip()
+        self.prop["TI"] += " " + self.prop["DTI"]
         self.prop["C"] = record[0][76].strip()
         self.prop["COIN"] = record[0][78].strip()
         self.prop["Q"] = record[0][79].strip()
         self.load_prop(record[1:])
 
-        self.energy = Quantity(self.prop["E"], self.prop["DE"])
-        self.rel_intensity = Quantity(self.prop["RI"], self.prop["DRI"])
+        self.energy = Quantity(self.prop["E"])
+        self.rel_intensity = Quantity(self.prop["RI"])
         self.multipolarity = self.prop["M"]
-        self.mixing_ratio = Quantity(self.prop["MR"], self.prop["DMR"])
-        self.conversion_coeff = Quantity(self.prop["CC"], self.prop["DCC"])
-        self.rel_tot_trans_intensity = Quantity(self.prop["TI"],
-                                                self.prop["DTI"])
+        self.mixing_ratio = Quantity(self.prop["MR"])
+        self.conversion_coeff = Quantity(self.prop["CC"])
+        self.rel_tot_trans_intensity = Quantity(self.prop["TI"])
         self.questionable = (self.prop["Q"] == "?")
         self.expected = (self.prop["Q"] == "S")
 

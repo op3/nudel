@@ -278,9 +278,14 @@ LIMIT_STRINGS = {
 }
 
 class Quantity:
+    all_orig = set()
     def __init__(self, val: str, dval: str = "", has_unit=True):
         self.orig_val = val
         self.orig_dval = dval
+        if dval:
+            self.all_orig.add(f"{val} {dval}")
+        else:
+            self.all_orig.add(val)
         self.val, self.pm, self.plus, self.minus = [float('nan')]*4
         self.sign = 0  # -1, 0, 1 = negative, unknown, positive
         self.limit = None
