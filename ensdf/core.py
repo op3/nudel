@@ -286,12 +286,25 @@ class Record(BaseRecord):
 
 class QValueRecord(BaseRecord):
     def __init__(self, dataset, line):
-        # TODO: Use prop instead!
-        self.q_beta_minus = (line[9:19].strip(), line[19:21].strip())
-        self.neutron_separation = (line[21:29].strip(), line[29:31].strip())
-        self.proton_separation = (line[31:39].strip(), line[39:41].strip())
-        self.alpha_decay = (line[41:49].strip(), line[49:55].strip())
-        self.q_ref = line[55:80].strip()
+        self.prop = dict()
+        self.prop["Q-"] = line[9:19].strip()
+        self.prop["DQ-"] = line[19:21].strip()
+        self.prop["Q-"] += " " + self.prop["DQ-"]
+        self.prop["N"] = line[21:29].strip()
+        self.prop["DN"] = line[29:31].strip()
+        self.prop["N"] += " " + self.prop["DN"]
+        self.prop["P"] = line[31:39].strip()
+        self.prop["DP"] = line[39:41].strip()
+        self.prop["P"] += " " + self.prop["DP"]
+        self.prop["A"] = line[41:49].strip()
+        self.prop["DA"] = line[49:55].strip()
+        self.prop["A"] += " " + self.prop["DA"]
+        self.prop["QREF"] = line[55:80].strip()
+
+        self.q_beta_minus = Quantity(self.prop["Q-"])
+        self.neutron_separation = Quantity(self.prop["N"])
+        self.proton_separation = Quantity(self.prop["P"])
+        self.alpha_decay = Quantity(self.prop["A"])
 
 
 class CrossReferenceRecord(BaseRecord):
