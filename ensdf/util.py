@@ -21,10 +21,8 @@
 
 import copy
 import enum
-from typing import Tuple
 import re
-
-import uncertainties
+from typing import Tuple, Optional
 
 
 ELEMENTS = [
@@ -264,6 +262,12 @@ ENERGY_UNITS = {
     "GEV": 1e9,
 }
 
+AREA_UNITS = {
+    "B": 1.,
+    "MB": 1e-3,
+    "UB": 1e-6,
+}
+
 class Limit(enum.Enum):        
     LOWER_THAN = enum.auto()
     GREATER_THAN = enum.auto()
@@ -277,150 +281,210 @@ LIMIT_STRINGS = {
     "GE": Limit.GREATER_THAN_EQUAL,
 }
 
+
+class Sign(enum.Enum):
+    NEGATIVE = "-"
+    UNSPECIFIED = 0
+    POSITIVE = "+"
+
+
+class Dimension(enum.Enum):
+    TIME = enum.auto()
+    ENERGY = enum.auto()
+    AREA = enum.auto()
+    FRACTION = enum.auto()
+
 class Quantity:
+    """Container for an ENSDF quantity
+
+    A quantity is more than just a single number:
+    It can have an uncertainty (possibly asymmetric), correspond to
+    an upper and/or lower limit or range, contain cross-references,
+    comments, units, and include an offset (left or right).
+
+    This class can perform simple calculations with other scalar
+    numbers (i.e., *NOT* other Quantity objects). Comparisons are
+    possible most of the time, but might not be transitive.
+    """
     all_orig = set()
-    def __init__(self, val: str, dval: str = "", has_unit=True):
-        self.orig_val = val
-        self.orig_dval = dval
-        if dval:
-            self.all_orig.add(f"{val} {dval}")
-        else:
-            self.all_orig.add(val)
+    xref_pattern = re.compile(r'\(((?:\d{4}[a-zA-Z]{2}[a-zA-Z\d]{2}),?)+\)')
+    calc_pattern = re.compile(r'[\(\)]')
+    assumed_pattern = re.compile(r'[\[\]]')
+    pattern = re.compile(r"""^
+        (?P<comp>(?:[<>]?=?|EQ\s|AP\s|[LG][TE]\s)?)
+        (?P<add_l>(?:S[NP]|[xA-Z])?)
+        (?P<sign>(?:[-\+])?)
+        (?:\s*)
+        (?P<leading_digits>(?:\d+)?)
+        (?P<decimals>(?:\.\d*)?)
+        (?P<exponent>(?:[eE][+-]?\d+)?)
+        (?:\s*)
+        (?P<add_r>(?:[-\+](?:S[NP]|[xA-Z]))?)
+        (?:\s*)
+        (?P<chars>(?:[MUNPFA]?S|[KM]?EV|[UM]?B|STABLE|WEAK|[YDHM])?)
+        (?:\s*)
+        (?P<limit>(?:[LG][TE]|AP|CA|SY)?)
+        (?:\s*)
+        (?P<unc>(?:\s[\d∞]+)?)
+        (?P<unc_pm>(?:\+?[\d∞]+\s?-[\d∞]+)?)
+        (?P<unc_mp>(?:-[\d∞]+\s?\+[\d∞]+)?)
+        (?P<comment>(?:\s[a-z][a-zA-Z0-9,.;\s]+)?)
+        $""", re.X)
+
+    def __init__(self, val: str):
+        """Initialize from an ENSDF quantity.
+
+        If a separate uncertainty is given in a D* field, simply
+        append it separated by a space.
+
+        Args:
+            val: ENSDF quantity
+        """
+        # Input cleanup (limited character set only)
+        val = val.replace('|?', '?').replace('|@', '∞').strip()
+        self.input = val
+        self.all_orig.add(self)
         self.val, self.pm, self.plus, self.minus = [float('nan')]*4
-        self.sign = 0  # -1, 0, 1 = negative, unknown, positive
-        self.limit = None
+        self.upper_bound, self.lower_bound = [float('nan')]*2
+        self.upper_bound_inclusive, self.lower_bound_inclusive = [None]*2
+        self.exponent = 0
+        self.decimals = 0
+        self.sign = Sign.UNSPECIFIED
         self.approximate = False
         self.calculated = False
         self.from_systematics = False
         self.asym_uncertainty = False
-        self.unit = ""
-        self.offset = None
-        self.reference = None
         self.questionable = False
         self.assumed = False
+
+        self.unit = ""
+        self.named = None
+        self.offset_l, self.offset_r, self.offset = [None]*3
+        self.dimension = None
+        self.xref = None
         self.comment = None
+        self._parse_input()
 
-        # TODO: Maybe it is possible to find a regex for parsing?
-        if "?" in val or "|?" in val:
+    def _parse_input(self, val: Optional[str] = None):
+        if val is not None:
+            val = val.replace('|?', '?').replace('|@', '∞').strip()
+        else:
+            val = self.input
+
+        xref = self.xref_pattern.match(val)
+        if xref:
+            self.xref = xref.group(0).split(',')
+            val = self.xref_pattern.sub("", val, 1)
+        
+        # This is not very precise: Maybe just a part of the quantity
+        # is calculated/assumed (e.g. only the uncertainty).
+        val, calculated = self.calc_pattern.subn("", val)
+        self.calculated = bool(calculated)
+        val, assumed = self.assumed_pattern.subn("", val)
+        self.assumed = bool(assumed)
+        
+        if "?" in val:
+            # A question mark might appear at different positions in
+            # the input string and I am not sure the position is of
+            # any significance.
             self.questionable = True
-            val = val.replace('|?', '').replace('?', '')
-        if not val:
+            val.replace('?', '')
+        
+        res = self.pattern.match(val.strip())
+        if not res:
+            # WARN: Ranges (e.g. 'a-b' or 'LT a GT b') not yet implemented
+            # or input is malformed (ValueError).
             return
-        if val[0] == "<":
-            self.limit = Limit.LOWER_THAN
-            val = val[1:]
-        elif val[0] == ">":
-            self.limit = Limit.GREATER_THAN
-            val = val[1:]
-        elif val == "STABLE":
+        frags = res.groupdict()
+
+        if frags["chars"] == "STABLE":
             self.val = float('inf')
-            self.sign = 1
+            self.sign = Sign.POSITIVE
+            self.named = "stable"
             return
-        elif val == "WEAK":
-            self.val = float('0')
-            self.sign = 1
+        elif frags["chars"] == "WEAK":
+            self.val = 0.
+            self.sign = Sign.POSITIVE
+            self.named = "weak"
             return
-        elif val == "-":
-            self.sign = -1
-            return
-        elif val == "+":
-            self.sign = +1
-            return
-        if val[0] == "(" and val[-1] == ")":
-            self.questionable = True
-            val = val[1:-1].strip()
-        if val[0] == "[" and val[-1] == "]":
-            self.assumed = True
-            val = val[1:-1].strip()
-        if "(" in val and val[-1] == ")":
-            val, ref = val.split('(', 1)
-            val = val.strip()
-            self.reference = ref[:-1]
-        if ' ' in val:
-            if has_unit:
-                val, self.unit = val.split(' ', 1)
-            else:
-                val, dval, *rest = val.split(' ', 2)
-                if rest:
-                    self.comment = rest[0]
+        
+        if frags["sign"]:
+            if frags["sign"] == "-":
+                self.sign = Sign.NEGATIVE
+            elif frags["sign"] == "+":
+                self.sign = Sign.POSITIVE
+        
+        if frags["exponent"]:
+            self.exponent = int(frags["exponent"][1:])
 
-        exponent = 0
-        if "E" in val[1:]:
-            val, exponent = val.split('E', 1)
-            exponent = int(exponent)
-        elif "e" in val[1:]:
-            val, exponent = val.split('e', 1)
-            exponent = int(exponent)
-        if "+" in val[1:]:
-            a, b = val.split('+', 1)
-            if a.strip().isalpha() and b.strip().isalpha():
-                self.offset = f"{a}+{b}"
-                val = ""
-            elif a.strip().isalpha():
-                self.offset, val = a.strip(), b.strip()
-            elif b.strip().isalpha():
-                self.offset, val = b.strip(), a.strip()
-            else:
-                # WARN: Not yet implemented
-                return
-        elif "-" in val[1:]:
-            a, b = val.split('-', 1)
-            if a.strip().isalpha() and b.strip().isalpha():
-                self.offset = f"{a}-{b}"
-                val = ""
-            elif a.strip().isalpha():
-                self.offset, val = a.strip(), f"-{b.strip()}"
-            else:
-                # WARN: Not yet implemented
-                return
-        elif any(c.isalpha() for c in val):
-            self.offset = val
-        elif "," in val[1:]:
-            # WARN: Lists not yet implemented
-            return
-        elif val:
-            val = alt_char_float(val)
-            # The next line solves problems with some typos in ENSDF
-            val = val.replace('(', '')
-            self.val = float(f"{val}") * 10**exponent
-            if val[0] == "+":
-                self.sign = 1
-                val = val[1:]
-            elif val[0] == -1:
-                self.sign = -1
-                val = val[1:]
+        main = None
+        if frags["leading_digits"] or frags["decimals"]:
+            main = float(frags["sign"] +
+                         frags["leading_digits"] +
+                         frags["decimals"])
+            main *= 10**self.exponent
+            if frags["decimals"]:
+                self.decimals = len(frags["decimals"].strip(' .'))
+        
+        if frags["unc"]:
+            self.pm = self._parse_uncertainty(frags["unc"].strip())
+        if frags["unc_pm"]:
+            plus, minus = frags["unc_pm"].split("-", 1)
+            self.plus = self._parse_uncertainty(plus.strip())
+            self.minus = self._parse_uncertainty(minus.strip())
+        if frags["unc_mp"]:
+            minus, plus = frags["unc_mp"].split("+", 1)
+            self.plus = self._parse_uncertainty(plus.strip())
+            self.minus = self._parse_uncertainty(minus.strip())
 
-        if dval:
-            dval = dval.strip()
-            if dval in LIMIT_STRINGS:
-                self.limit = LIMIT_STRINGS[dval]
-            elif dval in ["AP", "CA", "SY"]:
-                self.approximate = (dval == "AP")
-                self.calculated = (dval == "CA")
-                self.from_systematics = (dval == "SY")
+        comp = frags["comp"]
+        limit = frags["limit"]
+
+        self.approximate |= (comp == "AP " or limit == "AP")
+        self.from_systematics |= (limit == "SY")
+        self.calculated |= (limit == "CA")
+
+        if main:
+            if ((len(comp) >= 1 and comp[0] in ["<", "L"]) or
+                (len(limit) >= 1 and limit[0] == "L")):
+                self.lower_bound = main
+                self.lower_bound_inclusive = (
+                    (len(comp) >= 2 and comp[1] in ["=", "E"]) or
+                    (len(limit) >= 2 and limit[1] == "E"))
+            elif ((len(comp) >= 1 and comp[0] in [">", "G"]) or
+                (len(limit) >= 1 and limit[0] == "G")):
+                self.upper_bound = main
+                self.upper_bound_inclusive = (
+                    (len(comp) >= 2 and comp[1] in ["=", "E"]) or
+                    (len(limit) >= 2 and limit[1] == "E"))
             else:
-                # use uncertainties library for easier conversion
-                if "+" in dval and "-" in dval:
-                    self.asym_uncertainty = True
-                    if dval[0] == "+":
-                        plus, minus = dval.split('-')
-                        plus = plus[1:].strip()
-                    else:
-                        minus, plus = dval.split('+')
-                        minus = minus[1:].strip()
-                    plus = alt_char_float(plus)
-                    minus = alt_char_float(minus)
-                    res_plus = uncertainties.ufloat_fromstr(f"{val}({plus})")
-                    res_minus = uncertainties.ufloat_fromstr(f"{val}({minus})")
-                    self.plus = res_plus.std_dev * 10**exponent
-                    self.minus = res_minus.std_dev * 10**exponent
-                elif "+" in dval[1:] or "-" in dval[1:]:
-                    # TODO: No idea what this is supposed to mean
-                    pass
-                else:
-                    dval = alt_char_float(dval)
-                    res = uncertainties.ufloat_fromstr(f"{val}({dval})")
-                    self.pm = res.std_dev * 10**exponent
+                self.val = main
+            
+            if frags["chars"]:
+                self.set_unit(frags["chars"])
+        elif len(frags["chars"]) == 1:
+            self.offset_l = frags["chars"].strip('+')
+        if frags["add_l"]:
+            self.offset_l = frags["add_l"].strip('+')
+        elif frags["add_r"]:
+            self.offset_r = frags["add_r"].strip('+')
+        self.offset = self.offset_l or self.offset_r
+
+    def _parse_uncertainty(self, unc) -> float:
+        if "∞" in unc:
+            return float('inf')
+        return abs(int(unc)) * 10**(self.exponent - self.decimals)
+    
+    def set_unit(self, unit: str):
+        if unit in ENERGY_UNITS:
+            self.dimension = Dimension.ENERGY
+        elif unit in TIME_UNITS:
+            self.dimension = Dimension.TIME
+        elif unit in AREA_UNITS:
+            self.dimension = Dimension.AREA
+        else:
+            raise ValueError(f"Unknown unit: {unit}")
+        self.unit = unit
 
     def __add__(self, other):
         if isinstance(other, (int, float)):
@@ -439,15 +503,6 @@ class Quantity:
 
     def __str__(self):
         res = ""
-        if self.offset:
-            res += f"{self.offset} + "
-        if self.pm:
-            uf = uncertainties.ufloat(self.val, self.pm)
-            res += f"{uf}"
-        else:
-            res += f"{self.val}"
-        if self.unit:
-            res += f" {self.unit}"
         return res
     
     def __lt__(self, other):

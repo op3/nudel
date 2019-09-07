@@ -355,7 +355,6 @@ class LevelRecord(Record):
         self.prop["L"] = record[0][55:64].strip()
         self.prop["S"] = record[0][64:74].strip()
         self.prop["DS"] = record[0][74:76].strip()
-        self.prop["S"] += " " + self.prop["DS"]
         self.prop["C"] = record[0][76].strip()
         self.prop["MS"] = record[0][77:79].strip()
         self.prop["Q"] = record[0][79].strip()
@@ -365,18 +364,29 @@ class LevelRecord(Record):
         self.populating = []
 
         self.attrs = {}
-        try:
-            self.energy = Quantity(self.prop["E"])
-        except (IndexError, ValueError):
-            print(self.prop["E"])
-            print(self.prop["DE"])
-            raise
+        self.energy = Quantity(self.prop["E"])
         self.ang_mom = ang_mom_parser(self.prop["J"])
         self.half_life = Quantity(self.prop["T"])
         self.questionable = (self.prop["Q"] == "?")
         self.expected = (self.prop["Q"] == "S")
         self.metastable = (self.prop["MS"] and self.prop["MS"][0] == "M")
-        self.spec_strength = Quantity(self.prop["S"])
+
+        spec_strength_calc = False
+        if (len(self.prop["S"]) > 2 and
+            self.prop["S"][0] == "(" and self.prop["S"][-1] == ")"):
+            spec_strength_calc = True
+            self.prop["S"] = self.prop["S"][1:-1]
+        if not "E+" in self.prop["S"] and '+' in self.prop["S"]:
+            spec_strength = self.prop["S"].split("+")
+        elif ',' in self.prop["S"]:
+            spec_strength = self.prop["S"].split(",")
+        else:
+            spec_strength = [self.prop["S"]]
+        self.spec_strength = [Quantity(s + " " + self.prop["DS"])
+                              for s in spec_strength]
+        if spec_strength_calc:
+            for s in self.spec_strength:
+                s.calculated = True
 
 
     def add_decay(self, decay):
@@ -514,7 +524,7 @@ class GammaRecord(DecayRecord):
         self.attr = dict()
         for k, v in self.prop.items():
             if k[0:2] == "BE" or k[0:2] == "BM":
-                self.attr[k] = Quantity(v, has_unit=False)
+                self.attr[k] = Quantity(v)
 
         self._determine_dest_level()
 

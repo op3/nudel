@@ -2,8 +2,7 @@
 
 A parser for the Evaluated Nuclear Structure Data File (ENSDF) format implemented in Python.
 
-
-# Introduction
+## Introduction
 
 [ENSDF](https://www.nndc.bnl.gov/ensdf/) provides recommended nuclear structure and decay information.
 The data are organized in a special data format that is described [here](https://www.nndc.bnl.gov/nndcscr/documents/ensdf/ensdf-manual.pdf).
@@ -11,10 +10,8 @@ nuclstruc is an attempt to read those files such that the relevant information c
 without having to worry about the details of the (complicated) data format.
 The specification is quite extensive, and thus, the present approach is currently limited to only a few important quantities.
 Especially cross-references and comments are not yet properly resolved.
-Furthermore, 
 
-
-# Obtaining a copy of the ENSDF
+## Obtaining a copy of the ENSDF
 
 To use nuclstruc, a copy of the ENSDF is currently required.
 It can be obtained [here](https://www.nndc.bnl.gov/ensarchivals/).
@@ -24,27 +21,23 @@ Extract all files into a single folder.
 By default, nuclstruc searches in `$XDG_DATA_HOME/ensdf` for the files (usually, this is `~/.local/share/ensdf`).
 Alternatively, you can use `$ENSDF_PATH` to point to the correct directory.
 
-
-# Requirements
+## Requirements
 
 - python>=3.6
-- [uncertainties](https://pythonhosted.org/uncertainties/)
 
-I expect to be able to drop the `uncertainties` dependency in a future version.
+No further libraries are required!
 
-
-# Usage
+## Usage
 
 This is a minimal usage example, documentation will be improved in a future version:
 
 ```python
-from ensdf import Nucleus
+from ensdf import Nuclide
 
-molybdenum94 = Nucleus(ensdf, 94, 42)
+molybdenum94 = Nuclide(ensdf, 94, 42)
 ```
 
-
-# License
+## License
 
 Copyright © 2019
 
