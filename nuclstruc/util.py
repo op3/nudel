@@ -22,6 +22,7 @@
 import copy
 import enum
 import re
+from math import isnan
 from typing import Tuple, Optional
 
 
@@ -294,6 +295,7 @@ class Dimension(enum.Enum):
     AREA = enum.auto()
     FRACTION = enum.auto()
 
+
 class Quantity:
     """Container for an ENSDF quantity
 
@@ -306,7 +308,7 @@ class Quantity:
     numbers (i.e., *NOT* other Quantity objects). Comparisons are
     possible most of the time, but might not be transitive.
     """
-    all_orig = set()
+    all_orig = set()  # FIXME: remove
     xref_pattern = re.compile(r'\(((?:\d{4}[a-zA-Z]{2}[a-zA-Z\d]{2}),?)+\)')
     calc_pattern = re.compile(r'[\(\)]')
     assumed_pattern = re.compile(r'[\[\]]')
@@ -331,7 +333,9 @@ class Quantity:
         (?P<comment>(?:\s[a-z][a-zA-Z0-9,.;\s]+)?)
         $""", re.X)
 
-    def __init__(self, val: str):
+    def __init__(self,
+                 val: Optional[str] = None,
+                 default_unit: Optional[str] = None):
         """Initialize from an ENSDF quantity.
 
         If a separate uncertainty is given in a D* field, simply
@@ -339,6 +343,7 @@ class Quantity:
 
         Args:
             val: ENSDF quantity
+            default_unit: Set unit if not explicitly stated by val.
         """
         # Input cleanup (limited character set only)
         val = val.replace('|?', '?').replace('|@', '∞').strip()
@@ -353,7 +358,6 @@ class Quantity:
         self.approximate = False
         self.calculated = False
         self.from_systematics = False
-        self.asym_uncertainty = False
         self.questionable = False
         self.assumed = False
 
@@ -363,7 +367,10 @@ class Quantity:
         self.dimension = None
         self.xref = None
         self.comment = None
-        self._parse_input()
+        if val is not None:
+            self._parse_input()
+        if not self.unit and default_unit:
+            self.set_unit(default_unit)
 
     def _parse_input(self, val: Optional[str] = None):
         if val is not None:
@@ -392,8 +399,9 @@ class Quantity:
         
         res = self.pattern.match(val.strip())
         if not res:
-            # WARN: Ranges (e.g. 'a-b' or 'LT a GT b') not yet implemented
-            # or input is malformed (ValueError).
+            # FIXME: Ranges (e.g. 'a-b' or 'LT a GT b') not yet implemented
+            # or input is malformed (raise ValueError).
+            #print(f"Could not parse: {val}")
             return
         frags = res.groupdict()
 
@@ -401,6 +409,7 @@ class Quantity:
             self.val = float('inf')
             self.sign = Sign.POSITIVE
             self.named = "stable"
+            self.dimension = Dimension.TIME
             return
         elif frags["chars"] == "WEAK":
             self.val = 0.
@@ -444,7 +453,7 @@ class Quantity:
         self.from_systematics |= (limit == "SY")
         self.calculated |= (limit == "CA")
 
-        if main:
+        if main is not None:
             if ((len(comp) >= 1 and comp[0] in ["<", "L"]) or
                 (len(limit) >= 1 and limit[0] == "L")):
                 self.lower_bound = main
@@ -501,8 +510,55 @@ class Quantity:
     __radd__ = __add__
     __rmul__ = __mul__
 
+    def _format_number(self, number: float, decimal_offset: int = 0):
+        num = number * 10**(- self.exponent + decimal_offset)
+        return f"{num:.{self.decimals - decimal_offset}f}"
+
     def __str__(self):
         res = ""
+        if self.named:
+            res = self.named
+        else:
+            if self.offset_l:
+                res = f"{res}{offset_l}"
+            if self.val and (self.offset_l or self.sign == Sign.POSITIVE):
+                res = "{res}+"
+
+            if not isnan(self.lower_bound):
+                comp = "≥" if self.lower_bound_inclusive else ">"
+                tmp = self._format_number(self.lower_bound)
+                res = f"{comp}{res}{tmp}"
+            elif not isnan(self.upper_bound):
+                comp = "≤" if self.upper_bound_inclusive else "<"
+                tmp = self._format_number(self.upper_bound)
+                res = f"{comp}{res}{tmp}"
+            elif not (isnan(self.upper_bound) or isnan(self.lower_bound)):
+                # FIXME: Ranges not yet working!
+                pass
+            else: 
+                tmp = self._format_number(self.val)
+                res = f"{res}{tmp}"
+
+            if not isnan(self.pm):
+                tmp = self._format_number(self.pm, self.decimals)
+                res = f"{res}({tmp})"
+            elif not (isnan(self.plus) or isnan(self.minus)):
+                tmp_p = self._format_number(self.plus, self.decimals)
+                tmp_m = self._format_number(self.minus, self.decimals)
+                res = f"{res}(+{tmp_p}-{tmp_m})"
+            if self.exponent != 0:
+                res = f"{res}e{self.exponent:d}"
+            if self.unit:
+                res = f"{res} {self.unit}"
+            if self.offset_r:
+                res = f"{offset_r}"
+
+        if self.questionable:
+            res = f"{res} ?"
+        if self.assumed:
+            res = f"[{res}]"
+        if self.calculated:
+            res== f"({res})"
         return res
     
     def __lt__(self, other):

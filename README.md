@@ -24,6 +24,7 @@ Alternatively, you can use `$ENSDF_PATH` to point to the correct directory.
 ## Requirements
 
 - python>=3.6
+- pytest (*optional, only for unit tests*)
 
 No further libraries are required!
 

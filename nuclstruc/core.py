@@ -364,7 +364,7 @@ class LevelRecord(Record):
         self.populating = []
 
         self.attrs = {}
-        self.energy = Quantity(self.prop["E"])
+        self.energy = Quantity(self.prop["E"], "KEV")
         self.ang_mom = ang_mom_parser(self.prop["J"])
         self.half_life = Quantity(self.prop["T"])
         self.questionable = (self.prop["Q"] == "?")
@@ -414,7 +414,7 @@ class BetaRecord(DecayRecord):
         self.prop["Q"] = record[0][79].strip()
         self.load_prop(record[1:])
 
-        self.energy = Quantity(self.prop["E"])
+        self.energy = Quantity(self.prop["E"], "KEV")
         self.questionable = (self.prop["Q"] == "?")
         self.expected = (self.prop["Q"] == "S")
 
@@ -512,7 +512,7 @@ class GammaRecord(DecayRecord):
         self.prop["Q"] = record[0][79].strip()
         self.load_prop(record[1:])
 
-        self.energy = Quantity(self.prop["E"])
+        self.energy = Quantity(self.prop["E"], "KEV")
         self.rel_intensity = Quantity(self.prop["RI"])
         self.multipolarity = self.prop["M"]
         self.mixing_ratio = Quantity(self.prop["MR"])
