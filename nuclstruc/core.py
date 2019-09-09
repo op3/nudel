@@ -620,7 +620,7 @@ def rec_bracket_parser(s, i=0):
             parity = None
             i, sub_res = rec_bracket_parser(s, i+1)
             if i < len(s) and s[i] in "+-":
-                for ang_mom_sub, parity_sub in sub_res:
+                for ang_mom_sub, _ in sub_res:
                     res.append((ang_mom_sub, s[i]))
             else:
                 res.extend(sub_res)

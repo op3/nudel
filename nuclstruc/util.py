@@ -308,7 +308,6 @@ class Quantity:
     numbers (i.e., *NOT* other Quantity objects). Comparisons are
     possible most of the time, but might not be transitive.
     """
-    all_orig = set()  # FIXME: remove
     xref_pattern = re.compile(r'\(((?:\d{4}[a-zA-Z]{2}[a-zA-Z\d]{2}),?)+\)')
     calc_pattern = re.compile(r'[\(\)]')
     assumed_pattern = re.compile(r'[\[\]]')
@@ -328,7 +327,7 @@ class Quantity:
         (?P<limit>(?:[LG][TE]|AP|CA|SY)?)
         (?:\s*)
         (?P<unc>(?:\s[\d∞]+)?)
-        (?P<unc_pm>(?:\+?[\d∞]+\s?-[\d∞]+)?)
+        (?P<unc_pm>(?:\+[\d∞]+\s?-[\d∞]+)?)
         (?P<unc_mp>(?:-[\d∞]+\s?\+[\d∞]+)?)
         (?P<comment>(?:\s[a-z][a-zA-Z0-9,.;\s]+)?)
         $""", re.X)
@@ -345,10 +344,9 @@ class Quantity:
             val: ENSDF quantity
             default_unit: Set unit if not explicitly stated by val.
         """
-        # Input cleanup (limited character set only)
-        val = val.replace('|?', '?').replace('|@', '∞').strip()
         self.input = val
-        self.all_orig.add(self)
+        # Input cleanup (limited character set only)
+        val = alt_char_float(val)
         self.val, self.pm, self.plus, self.minus = [float('nan')]*4
         self.upper_bound, self.lower_bound = [float('nan')]*2
         self.upper_bound_inclusive, self.lower_bound_inclusive = [None]*2
@@ -395,7 +393,7 @@ class Quantity:
             # the input string and I am not sure the position is of
             # any significance.
             self.questionable = True
-            val.replace('?', '')
+            val = val.replace('?', '')
         
         res = self.pattern.match(val.strip())
         if not res:
@@ -456,14 +454,14 @@ class Quantity:
         if main is not None:
             if ((len(comp) >= 1 and comp[0] in ["<", "L"]) or
                 (len(limit) >= 1 and limit[0] == "L")):
-                self.lower_bound = main
-                self.lower_bound_inclusive = (
+                self.upper_bound = main
+                self.upper_bound_inclusive = (
                     (len(comp) >= 2 and comp[1] in ["=", "E"]) or
                     (len(limit) >= 2 and limit[1] == "E"))
             elif ((len(comp) >= 1 and comp[0] in [">", "G"]) or
                 (len(limit) >= 1 and limit[0] == "G")):
-                self.upper_bound = main
-                self.upper_bound_inclusive = (
+                self.lower_bound = main
+                self.lower_bound_inclusive = (
                     (len(comp) >= 2 and comp[1] in ["=", "E"]) or
                     (len(limit) >= 2 and limit[1] == "E"))
             else:
@@ -474,10 +472,21 @@ class Quantity:
         elif len(frags["chars"]) == 1:
             self.offset_l = frags["chars"].strip('+')
         if frags["add_l"]:
+            if self.offset_l:
+                self.offset_r = self.offset_l
             self.offset_l = frags["add_l"].strip('+')
-        elif frags["add_r"]:
+        if frags["add_r"]:
             self.offset_r = frags["add_r"].strip('+')
-        self.offset = self.offset_l or self.offset_r
+
+        self.offset = self.offset_l or self.offset_r or None
+        if self.offset_l and self.offset_r:
+            self.offset = f"{self.offset_l} + {self.offset_r}"
+        
+        if self.offset and isnan(self.val):
+            self.val = 0.0
+        
+        if frags["comment"]:
+            self.comment = frags["comment"].strip()
 
     def _parse_uncertainty(self, unc) -> float:
         if "∞" in unc:
@@ -520,22 +529,23 @@ class Quantity:
             res = self.named
         else:
             if self.offset_l:
-                res = f"{res}{offset_l}"
-            if self.val and (self.offset_l or self.sign == Sign.POSITIVE):
-                res = "{res}+"
+                res = f"{res}{self.offset_l}"
+            if self.val and ((self.offset_l and self.val >= 0.) or
+                             self.sign == Sign.POSITIVE):
+                res = f"{res}+"
 
             if not isnan(self.lower_bound):
                 comp = "≥" if self.lower_bound_inclusive else ">"
                 tmp = self._format_number(self.lower_bound)
-                res = f"{comp}{res}{tmp}"
+                res = f"{comp} {res}{tmp}"
             elif not isnan(self.upper_bound):
                 comp = "≤" if self.upper_bound_inclusive else "<"
                 tmp = self._format_number(self.upper_bound)
-                res = f"{comp}{res}{tmp}"
+                res = f"{comp} {res}{tmp}"
             elif not (isnan(self.upper_bound) or isnan(self.lower_bound)):
                 # FIXME: Ranges not yet working!
                 pass
-            else: 
+            elif not self.offset_l or (self.val and not isnan(self.val)):
                 tmp = self._format_number(self.val)
                 res = f"{res}{tmp}"
 
@@ -551,14 +561,17 @@ class Quantity:
             if self.unit:
                 res = f"{res} {self.unit}"
             if self.offset_r:
-                res = f"{offset_r}"
+                res = f"{res} + {self.offset_r}"
 
+        if self.approximate:
+            res = f"~ {res}"
         if self.questionable:
             res = f"{res} ?"
         if self.assumed:
             res = f"[{res}]"
         if self.calculated:
-            res== f"({res})"
+            res = f"({res})"
+        res = res.replace('inf', '∞')
         return res
     
     def __lt__(self, other):
@@ -586,4 +599,4 @@ class Quantity:
             return self.val >= other.val
 
 def alt_char_float(val):
-    return val.replace('|@', 'inf').replace('INFNT', 'inf')
+    return val.replace('|?', '?').replace('|@', '∞').replace('INFNT', '∞').strip()
