@@ -308,7 +308,7 @@ class Quantity:
     numbers (i.e., *NOT* other Quantity objects). Comparisons are
     possible most of the time, but might not be transitive.
     """
-    xref_pattern = re.compile(r'\(((?:\d{4}[a-zA-Z]{2}[a-zA-Z\d]{2}),?)+\)')
+    ref_pattern = re.compile(r'\(((?:\d{4}[a-zA-Z]{2}[a-zA-Z\d]{2}),?)+\)')
     calc_pattern = re.compile(r'[\(\)]')
     assumed_pattern = re.compile(r'[\[\]]')
     pattern = re.compile(r"""^
@@ -363,7 +363,7 @@ class Quantity:
         self.named = None
         self.offset_l, self.offset_r, self.offset = [None]*3
         self.dimension = None
-        self.xref = None
+        self.reference = None
         self.comment = None
         if val is not None:
             self._parse_input()
@@ -376,10 +376,10 @@ class Quantity:
         else:
             val = self.input
 
-        xref = self.xref_pattern.match(val)
-        if xref:
-            self.xref = xref.group(0).split(',')
-            val = self.xref_pattern.sub("", val, 1)
+        ref = self.ref_pattern.match(val)
+        if ref:
+            self.reference = ref.group(0).split(',')
+            val = self.ref_pattern.sub("", val, 1)
         
         # This is not very precise: Maybe just a part of the quantity
         # is calculated/assumed (e.g. only the uncertainty).

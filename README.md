@@ -38,6 +38,10 @@ from ensdf import Nuclide
 molybdenum94 = Nuclide(ensdf, 94, 42)
 ```
 
+## Examples
+
+Notebooks with usage examples can be found in the [examples/notebooks](examples/notebooks) directory.
+
 ## License
 
 Copyright © 2019

@@ -684,7 +684,7 @@ class AngularMoment:
         self.div = None
         try:
             self.ang_mom, self.div = ang_mom
-            self.val = self.ang_nom/self.div
+            self.val = self.ang_mom/self.div
         except:
             self.ang_mom = ang_mom
             self.val = None

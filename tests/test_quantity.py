@@ -47,7 +47,7 @@ QUANTITY_DEFAULT = {
     'offset_l': None,
     'offset_r': None,
     'dimension': None,
-    'xref': None,
+    'reference': None,
     'comment': None
 }
 
