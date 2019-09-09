@@ -108,16 +108,16 @@ def cmp_nan_safe(a, b):
         "plus": 2.8000000000000003,
         "minus": 1.4000000000000001,
         "decimals": 1,
-        "unit": "PS",
+        "unit": "ps",
         "dimension": Dimension.TIME,
-    }, "10.4(+28-14) PS"],
+    }, "10.4(+28-14) ps"],
     ["6.1 PS 3", {
         "val": 6.1,
         "pm": 0.30000000000000004,
         "decimals": 1,
-        "unit": "PS",
+        "unit": "ps",
         "dimension": Dimension.TIME,
-    }, "6.1(3) PS"],
+    }, "6.1(3) ps"],
     ["0.3 LT", {
         "upper_bound": 0.3,
         "upper_bound_inclusive": False,
@@ -155,16 +155,16 @@ def cmp_nan_safe(a, b):
     ["550 PS 20", {
         "val": 550.0,
         "pm": 20,
-        "unit": "PS",
+        "unit": "ps",
         "dimension": Dimension.TIME,
-    }, "550(20) PS"],
+    }, "550(20) ps"],
     ["0.3 NS LE", {
         "upper_bound": 0.3,
         "upper_bound_inclusive": True,
         "decimals": 1,
-        "unit": "NS",
+        "unit": "ns",
         "dimension": Dimension.TIME,
-    }, "≤ 0.3 NS"],
+    }, "≤ 0.3 ns"],
     ["8E+2", {
         "val": 800.0,
         "exponent": 2,
@@ -172,9 +172,9 @@ def cmp_nan_safe(a, b):
     ["7 PS LE", {
         "upper_bound": 7.0,
         "upper_bound_inclusive": True,
-        "unit": "PS",
+        "unit": "ps",
         "dimension": Dimension.TIME,
-    }, "≤ 7 PS"],
+    }, "≤ 7 ps"],
     ["-8150 60", {
         "val": -8150.0,
         "pm": 60,
@@ -225,9 +225,9 @@ def cmp_nan_safe(a, b):
     ["6.0 NS", {
         "val": 6.0,
         "decimals": 1,
-        "unit": "NS",
+        "unit": "ns",
         "dimension": Dimension.TIME,
-    }, "6.0 NS"],
+    }, "6.0 ns"],
     ["2.20E4 SY", {
         "val": 22000.0,
         "exponent": 4,
@@ -261,16 +261,16 @@ def cmp_nan_safe(a, b):
         "lower_bound_inclusive": True,
         "exponent": 20,
         "decimals": 1,
-        "unit": "Y",
+        "unit": "a",
         "dimension": Dimension.TIME,
-    }, "≥ 6.7e20 Y"],
+    }, "≥ 6.7e20 a"],
     ["43 MS +21-15", {
         "val": 43.0,
         "plus": 21,
         "minus": 15,
-        "unit": "MS",
+        "unit": "ms",
         "dimension": Dimension.TIME,
-    }, "43(+21-15) MS"],
+    }, "43(+21-15) ms"],
     ["0+X", {
         "val": 0.0,
         "offset_r": "X",
@@ -300,21 +300,21 @@ def cmp_nan_safe(a, b):
         "pm": 180,
         "exponent": 3,
         "decimals": 2,
-        "unit": "Y",
+        "unit": "a",
         "dimension": Dimension.TIME,
-    }, "1.20(18)e3 Y"],
+    }, "1.20(18)e3 a"],
     ["200 KEV", {
         "val": 200.0,
-        "unit": "KEV",
+        "unit": "keV",
         "dimension": Dimension.ENERGY,
-    }, "200 KEV"],
+    }, "200 keV"],
     ["10E-3 EV 2", {
         "val": 0.01,
         "pm": 0.002,
         "exponent": -3,
-        "unit": "EV",
+        "unit": "eV",
         "dimension": Dimension.ENERGY,
-    }, "10(2)e-3 EV"],
+    }, "10(2)e-3 eV"],
     ["SN+0.02343 2", {
         "val": 0.02343,
         "pm": 2e-05,
@@ -372,23 +372,23 @@ def cmp_nan_safe(a, b):
         "val": 0.00011399999999999999,
         "exponent": -4,
         "decimals": 2,
-        "unit": "EV",
+        "unit": "eV",
         "dimension": Dimension.ENERGY,
-    }, "1.14e-4 EV"],
+    }, "1.14e-4 eV"],
     ["6E-2 EV GT", {
         "lower_bound": 0.06,
         "lower_bound_inclusive": False,
         "exponent": -2,
-        "unit": "EV",
+        "unit": "eV",
         "dimension": Dimension.ENERGY,
-    }, "> 6e-2 EV"],
+    }, "> 6e-2 eV"],
     [".0003 EV 4", {
         "val": 0.0003,
         "pm": 0.0004,
         "decimals": 4,
-        "unit": "EV",
+        "unit": "eV",
         "dimension": Dimension.ENERGY,
-    }, "0.0003(4) EV"],
+    }, "0.0003(4) eV"],
     ["-4014", {
         "val": -4014.0,
         "sign": Sign.NEGATIVE,
@@ -404,9 +404,9 @@ def cmp_nan_safe(a, b):
         "minus": 60,
         "exponent": 2,
         "decimals": 1,
-        "unit": "FS",
+        "unit": "fs",
         "dimension": Dimension.TIME,
-    }, "1.5(+15-6)e2 FS"],
+    }, "1.5(+15-6)e2 fs"],
     [".00005 2", {
         "val": 5e-05,
         "pm": 2e-05,
@@ -442,9 +442,9 @@ def cmp_nan_safe(a, b):
         "plus": 0.09,
         "minus": 0.05,
         "decimals": 2,
-        "unit": "NS",
+        "unit": "ns",
         "dimension": Dimension.TIME,
-    }, "0.52(+9-5) NS"],
+    }, "0.52(+9-5) ns"],
     ["SN+Y", {
         "val": 0.0,
         "sign": Sign.POSITIVE,
@@ -485,9 +485,9 @@ def cmp_nan_safe(a, b):
         "minus": 0.04,
         "decimals": 2,
         "sign": Sign.POSITIVE,
-        "unit": "PS",
+        "unit": "ps",
         "dimension": Dimension.TIME,
-    }, "+0.16(+8-4) PS"],
+    }, "+0.16(+8-4) ps"],
     ["-.036 13", {
         "val": -0.036,
         "pm": 0.013000000000000001,
@@ -553,9 +553,9 @@ def cmp_nan_safe(a, b):
         "plus": 5200,
         "minus": 1700,
         "exponent": 2,
-        "unit": "FS",
+        "unit": "fs",
         "dimension": Dimension.TIME,
-    }, "52(+52-17)e2 FS"],
+    }, "52(+52-17)e2 fs"],
     [".004 CA", {
         "val": 0.004,
         "decimals": 3,
@@ -629,8 +629,11 @@ def test_quantity(quantity, mod_dict, printed):
 
 def test_default_unit():
     q = Quantity("45 2", default_unit="KEV")
-    assert q.unit == "KEV"
+    assert q.unit == "keV"
 
-def test_default_unit_no_override():
+def test_default_unit_no_overwrite():
     q = Quantity("45 MEV 2", default_unit="KEV")
-    assert q.unit == "MEV"
+    assert q.unit == "MeV"
+
+# TODO: The following quantities currently fail:
+#   '6.3 PS 9-60', '0.61,0.40', '0.03-0.04', '.05,.1'

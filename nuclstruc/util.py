@@ -243,30 +243,30 @@ def nucid_from_az(nucleus):
         return f"{mass:3}  "
 
 TIME_UNITS = {
-    "Y": 365. * 86400., # Definition of year is unclear
-    "D": 86400.,
-    "H": 3600.,
-    "M": 60.,
-    "S": 1.,
-    "MS": 1e-3,
-    "US": 1e-6,
-    "NS": 1e-9,
-    "PS": 1e-12,
-    "FS": 1e-15,
-    "AS": 1e-18,
+    "Y": (365. * 86400., "a"), # Definition of year is unclear
+    "D": (86400., "d"),
+    "H": (3600., "h"),
+    "M": (60., "min"),
+    "S": (1., "s"),
+    "MS": (1e-3, "ms"),
+    "US": (1e-6, "μs"),
+    "NS": (1e-9, "ns"),
+    "PS": (1e-12, "ps"),
+    "FS": (1e-15, "fs"),
+    "AS": (1e-18, "as"),
 }
 
 ENERGY_UNITS = {
-    "EV": 1.,
-    "KEV": 1e3,
-    "MEV": 1e6,
-    "GEV": 1e9,
+    "EV": (1., "eV"),
+    "KEV": (1e3, "keV"),
+    "MEV": (1e6, "MeV"),
+    "GEV": (1e9, "GeV"),
 }
 
 AREA_UNITS = {
-    "B": 1.,
-    "MB": 1e-3,
-    "UB": 1e-6,
+    "B": (1., "b"),
+    "MB": (1e-3, "mb"),
+    "UB": (1e-6, "μb"),
 }
 
 class Limit(enum.Enum):        
@@ -494,15 +494,18 @@ class Quantity:
         return abs(int(unc)) * 10**(self.exponent - self.decimals)
     
     def set_unit(self, unit: str):
+        unit = unit.replace("μ", "u").upper()
         if unit in ENERGY_UNITS:
             self.dimension = Dimension.ENERGY
+            self.unit = ENERGY_UNITS[unit][1]
         elif unit in TIME_UNITS:
             self.dimension = Dimension.TIME
+            self.unit = TIME_UNITS[unit][1]
         elif unit in AREA_UNITS:
             self.dimension = Dimension.AREA
+            self.unit = AREA_UNITS[unit][1]
         else:
             raise ValueError(f"Unknown unit: {unit}")
-        self.unit = unit
 
     def __add__(self, other):
         if isinstance(other, (int, float)):
