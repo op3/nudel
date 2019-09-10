@@ -2,20 +2,20 @@
 #
 # Copyright © 2019 O. Papst.
 #
-# This file is part of nuclstruc.
+# This file is part of nudel.
 #
-# nuclstruc is free software: you can redistribute it and/or modify
+# nudel is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# nuclstruc is distributed in the hope that it will be useful,
+# nudel is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with nuclstruc.  If not, see <http://www.gnu.org/licenses/>.
+# along with nudel.  If not, see <http://www.gnu.org/licenses/>.
 
 """Python interface for ENSDF nuclear data"""
 
@@ -133,12 +133,8 @@ class Dataset:
         self._parse_dataset()
 
     def _add_record(self, record, comments, xref, level=None):
-        try:
-            rec_type = get_record_type(record)
-            rec = rec_type(self, record, comments, xref, level)
-        except:
-            print(record)
-            raise
+        rec_type = get_record_type(record)
+        rec = rec_type(self, record, comments, xref, level)
         self.records.append(rec)
         return rec
 
@@ -180,7 +176,7 @@ class Dataset:
                     elif flag_rectype.upper() == "H":
                         history += line[9:80] + " "
                     elif flag_rectype.upper() == "N":
-                        pass # TODO: Normalization
+                        warnings.warn("Normalization records not yet implemented.")
             if header:
                 continue
 
@@ -208,6 +204,7 @@ class Dataset:
                         comments.append([line])
                 else:
                     # This is a broken record!
+                    warnings.warn("Record is malformed, parsing anyway.")
                     record.append(line)
             except (IndexError, ValueError):
                 print(record)
@@ -289,16 +286,16 @@ class QValueRecord(BaseRecord):
         self.prop = dict()
         self.prop["Q-"] = line[9:19].strip()
         self.prop["DQ-"] = line[19:21].strip()
-        self.prop["Q-"] += " " + self.prop["DQ-"]
+        self.prop["Q-"] += " " + self.prop["DQ-"].strip()
         self.prop["N"] = line[21:29].strip()
         self.prop["DN"] = line[29:31].strip()
-        self.prop["N"] += " " + self.prop["DN"]
+        self.prop["N"] += " " + self.prop["DN"].strip()
         self.prop["P"] = line[31:39].strip()
         self.prop["DP"] = line[39:41].strip()
-        self.prop["P"] += " " + self.prop["DP"]
+        self.prop["P"] += " " + self.prop["DP"].strip()
         self.prop["A"] = line[41:49].strip()
         self.prop["DA"] = line[49:55].strip()
-        self.prop["A"] += " " + self.prop["DA"]
+        self.prop["A"] += " " + self.prop["DA"].strip()
         self.prop["QREF"] = line[55:80].strip()
 
         self.q_beta_minus = Quantity(self.prop["Q-"])
@@ -330,14 +327,14 @@ class ParentRecord(Record):
         super().__init__(dataset, record, None, None)
         self.prop["E"] = record[0][9:19].strip()
         self.prop["DE"] = record[0][19:21].strip()
-        self.prop["E"] += " " + self.prop["DE"]
+        self.prop["E"] += " " + self.prop["DE"].strip()
         self.prop["J"] = record[0][21:39].strip()
         self.prop["T"] = record[0][39:49].strip()
         self.prop["DT"] = record[0][49:55].strip()
-        self.prop["T"] += " " + self.prop["DT"]
+        self.prop["T"] += " " + self.prop["DT"].strip()
         self.prop["QP"] = record[0][64:74].strip()
         self.prop["DQP"] = record[0][74:76].strip()
-        self.prop["QP"] += " " + self.prop["DQP"]
+        self.prop["QP"] += " " + self.prop["DQP"].strip()
         self.prop["ION"] = record[0][76:80].strip()
         self.load_prop(record[1:])
 
@@ -347,11 +344,11 @@ class LevelRecord(Record):
         super().__init__(dataset, record, comments, xref)
         self.prop["E"] = record[0][9:19].strip()
         self.prop["DE"] = record[0][19:21].strip()
-        self.prop["E"] += " " + self.prop["DE"]
+        self.prop["E"] += " " + self.prop["DE"].strip()
         self.prop["J"] = record[0][21:39].strip()
         self.prop["T"] = record[0][39:49].strip()
         self.prop["DT"] = record[0][49:55].strip()
-        self.prop["T"] += " " + self.prop["DT"]
+        self.prop["T"] += " " + self.prop["DT"].strip()
         self.prop["L"] = record[0][55:64].strip()
         self.prop["S"] = record[0][64:74].strip()
         self.prop["DS"] = record[0][74:76].strip()
@@ -363,13 +360,24 @@ class LevelRecord(Record):
         self.decays = []
         self.populating = []
 
-        self.attrs = {}
+        self.attr = dict()
         self.energy = Quantity(self.prop["E"], "KEV")
         self.ang_mom = ang_mom_parser(self.prop["J"])
         self.half_life = Quantity(self.prop["T"])
         self.questionable = (self.prop["Q"] == "?")
         self.expected = (self.prop["Q"] == "S")
+        self.g_factor = Quantity(self.prop["G"] if "G" in self.prop else "")
         self.metastable = (self.prop["MS"] and self.prop["MS"][0] == "M")
+
+        self.decay_ratio = dict()
+        for k, v in self.prop.items():
+            if len(k) == 2 and k[0] == "B":
+                self.attr[k] = Quantity(v)
+            
+            if k[0] == "%":
+                self.decay_ratio[k[1:]] = Quantity(v, default_unit="%")
+
+
 
         spec_strength_calc = False
         if (len(self.prop["S"]) > 2 and
@@ -388,7 +396,6 @@ class LevelRecord(Record):
             for s in self.spec_strength:
                 s.calculated = True
 
-
     def add_decay(self, decay):
         self.decays.append(decay)
 
@@ -402,13 +409,13 @@ class BetaRecord(DecayRecord):
         super().__init__(dataset, record, comments, xref, dest_level)
         self.prop["E"] = record[0][9:19].strip()
         self.prop["DE"] = record[0][19:21].strip()
-        self.prop["E"] += " " + self.prop["DE"]
+        self.prop["E"] += " " + self.prop["DE"].strip()
         self.prop["IB"] = record[0][21:29].strip()
         self.prop["DIB"] = record[0][29:31].strip()
-        self.prop["IB"] += " " + self.prop["DIB"]
+        self.prop["IB"] += " " + self.prop["DIB"].strip()
         self.prop["LOGFT"] = record[0][41:49].strip()
         self.prop["DFT"] = record[0][49:55].strip()
-        self.prop["LOGFT"] += " " + self.prop["DFT"]
+        self.prop["LOGFT"] += " " + self.prop["DFT"].strip()
         self.prop["C"] = record[0][76].strip()
         self.prop["UN"] = record[0][77:79].strip()
         self.prop["Q"] = record[0][79].strip()
@@ -424,19 +431,19 @@ class ECRecord(DecayRecord):
         super().__init__(dataset, record, comments, xref, dest_level)
         self.prop["E"] = record[0][9:19].strip()
         self.prop["DE"] = record[0][19:21].strip()
-        self.prop["E"] += " " + self.prop["DE"]
+        self.prop["E"] += " " + self.prop["DE"].strip()
         self.prop["IB"] = record[0][21:29].strip()
         self.prop["DIB"] = record[0][29:31].strip()
-        self.prop["IB"] += " " + self.prop["DIB"]
+        self.prop["IB"] += " " + self.prop["DIB"].strip()
         self.prop["IE"] = record[0][31:39].strip()
         self.prop["DIE"] = record[0][39:41].strip()
-        self.prop["IE"] += " " + self.prop["DIE"]
+        self.prop["IE"] += " " + self.prop["DIE"].strip()
         self.prop["LOGFT"] = record[0][41:49].strip()
         self.prop["DFT"] = record[0][49:55].strip()
-        self.prop["LOGFT"] += " " + self.prop["DFT"]
+        self.prop["LOGFT"] += " " + self.prop["DFT"].strip()
         self.prop["TI"] = record[0][64:74].strip()
         self.prop["DTI"] = record[0][74:76].strip()
-        self.prop["TI"] += " " + self.prop["DTI"]
+        self.prop["TI"] += " " + self.prop["DTI"].strip()
         self.prop["C"] = record[0][76].strip()
         self.prop["UN"] = record[0][77:79].strip()
         self.prop["Q"] = record[0][79].strip()
@@ -448,13 +455,13 @@ class AlphaRecord(DecayRecord):
         super().__init__(dataset, record, comments, xref, dest_level)
         self.prop["E"] = record[0][9:19].strip()
         self.prop["DE"] = record[0][19:21].strip()
-        self.prop["E"] += " " + self.prop["DE"]
+        self.prop["E"] += " " + self.prop["DE"].strip()
         self.prop["IA"] = record[0][21:29].strip()
         self.prop["DIA"] = record[0][29:31].strip()
-        self.prop["IA"] += " " + self.prop["DIA"]
+        self.prop["IA"] += " " + self.prop["DIA"].strip()
         self.prop["HF"] = record[0][31:39].strip()
         self.prop["DHF"] = record[0][39:41].strip()
-        self.prop["HF"] += " " + self.prop["DHF"]
+        self.prop["HF"] += " " + self.prop["DHF"].strip()
         self.prop["C"] = record[0][76].strip()
         self.prop["Q"] = record[0][79].strip()
         self.load_prop(record[1:])
@@ -467,14 +474,14 @@ class ParticleRecord(DecayRecord):
         self.prop["Particle"] = record[0][8]
         self.prop["E"] = record[0][9:19].strip()
         self.prop["DE"] = record[0][19:21].strip()
-        self.prop["E"] += " " + self.prop["DE"]
+        self.prop["E"] += " " + self.prop["DE"].strip()
         self.prop["IP"] = record[0][21:29].strip()
         self.prop["DIP"] = record[0][29:31].strip()
-        self.prop["IP"] += " " + self.prop["DIP"]
+        self.prop["IP"] += " " + self.prop["DIP"].strip()
         self.prop["EI"] = record[0][31:39].strip()
         self.prop["T"] = record[0][39:49].strip()
         self.prop["DT"] = record[0][49:55].strip()
-        self.prop["T"] += " " + self.prop["DT"]
+        self.prop["T"] += " " + self.prop["DT"].strip()
         self.prop["L"] = record[0][55:64].strip()
         self.prop["C"] = record[0][76].strip()
         self.prop["COIN"] = record[0][78].strip()
@@ -493,20 +500,20 @@ class GammaRecord(DecayRecord):
             self.orig_level.add_decay(self)
         self.prop["E"] = record[0][9:19].strip()
         self.prop["DE"] = record[0][19:21].strip()
-        self.prop["E"] += " " + self.prop["DE"]
+        self.prop["E"] += " " + self.prop["DE"].strip()
         self.prop["RI"] = record[0][21:29].strip()
         self.prop["DRI"] = record[0][29:31].strip()
-        self.prop["RI"] += " " + self.prop["DRI"]
+        self.prop["RI"] += " " + self.prop["DRI"].strip()
         self.prop["M"] = record[0][31:41].strip()
         self.prop["MR"] = record[0][41:49].strip()
         self.prop["DMR"] = record[0][49:55].strip()
-        self.prop["MR"] += " " + self.prop["DMR"]
+        self.prop["MR"] += " " + self.prop["DMR"].strip()
         self.prop["CC"] = record[0][55:62].strip()
         self.prop["DCC"] = record[0][62:64].strip()
-        self.prop["CC"] += " " + self.prop["DCC"]
+        self.prop["CC"] += " " + self.prop["DCC"].strip()
         self.prop["TI"] = record[0][64:74].strip()
         self.prop["DTI"] = record[0][74:76].strip()
-        self.prop["TI"] += " " + self.prop["DTI"]
+        self.prop["TI"] += " " + self.prop["DTI"].strip()
         self.prop["C"] = record[0][76].strip()
         self.prop["COIN"] = record[0][78].strip()
         self.prop["Q"] = record[0][79].strip()

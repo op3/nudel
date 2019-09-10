@@ -2,27 +2,28 @@
 #
 # Copyright © 2019 O. Papst.
 #
-# This file is part of nuclstruc.
+# This file is part of nudel.
 #
-# nuclstruc is free software: you can redistribute it and/or modify
+# nudel is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# nuclstruc is distributed in the hope that it will be useful,
+# nudel is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with nuclstruc.  If not, see <http://www.gnu.org/licenses/>.
+# along with nudel.  If not, see <http://www.gnu.org/licenses/>.
 
-"""helper functions for nuclstruc"""
+"""helper functions for nudel"""
 
 import copy
 import enum
 import re
 from math import isnan
+import warnings
 from typing import Tuple, Optional
 
 
@@ -269,6 +270,10 @@ AREA_UNITS = {
     "UB": (1e-6, "μb"),
 }
 
+FRACTION_UNITS = {
+    "%": (0.01, "%"),
+}
+
 class Limit(enum.Enum):        
     LOWER_THAN = enum.auto()
     GREATER_THAN = enum.auto()
@@ -397,6 +402,7 @@ class Quantity:
         
         res = self.pattern.match(val.strip())
         if not res:
+            warnings.warn(f"Quantity ranges not yet supported.")
             # FIXME: Ranges (e.g. 'a-b' or 'LT a GT b') not yet implemented
             # or input is malformed (raise ValueError).
             #print(f"Could not parse: {val}")
@@ -504,6 +510,9 @@ class Quantity:
         elif unit in AREA_UNITS:
             self.dimension = Dimension.AREA
             self.unit = AREA_UNITS[unit][1]
+        elif unit in FRACTION_UNITS:
+            self.dimension = Dimension.FRACTION
+            self.unit = FRACTION_UNITS[unit][1]
         else:
             raise ValueError(f"Unknown unit: {unit}")
 
@@ -576,6 +585,9 @@ class Quantity:
             res = f"({res})"
         res = res.replace('inf', '∞')
         return res
+    
+    def __repr__(self):
+        return f"<{self}>"
     
     def __lt__(self, other):
         if isinstance(other, (int, float)):
