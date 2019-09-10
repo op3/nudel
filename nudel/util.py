@@ -22,9 +22,11 @@
 import copy
 import enum
 import re
+import math
 from math import isnan
 import warnings
-from typing import Tuple, Optional
+from typing import Tuple, Optional, NamedTuple, Union
+from functools import lru_cache
 
 
 ELEMENTS = [
@@ -243,36 +245,43 @@ def nucid_from_az(nucleus):
     except TypeError:
         return f"{mass:3}  "
 
-TIME_UNITS = {
-    "Y": (365. * 86400., "a"), # Definition of year is unclear
-    "D": (86400., "d"),
-    "H": (3600., "h"),
-    "M": (60., "min"),
-    "S": (1., "s"),
-    "MS": (1e-3, "ms"),
-    "US": (1e-6, "μs"),
-    "NS": (1e-9, "ns"),
-    "PS": (1e-12, "ps"),
-    "FS": (1e-15, "fs"),
-    "AS": (1e-18, "as"),
-}
 
-ENERGY_UNITS = {
-    "EV": (1., "eV"),
-    "KEV": (1e3, "keV"),
-    "MEV": (1e6, "MeV"),
-    "GEV": (1e9, "GeV"),
-}
+class Dimension(enum.Enum):
+    TIME = enum.auto()
+    ENERGY = enum.auto()
+    AREA = enum.auto()
+    SCALAR = enum.auto()
 
-AREA_UNITS = {
-    "B": (1., "b"),
-    "MB": (1e-3, "mb"),
-    "UB": (1e-6, "μb"),
-}
 
-FRACTION_UNITS = {
-    "%": (0.01, "%"),
-}
+class Unit(NamedTuple):
+    symb: str
+    dimension: Dimension
+    basis: float
+    ensdf_symb: Optional[str]
+
+
+Units = [
+    Unit("a", Dimension.TIME, 365. * 86400., "Y"), # Definition of year is unclear
+    Unit("d", Dimension.TIME, 86400., "D"),
+    Unit("h", Dimension.TIME, 3600., "H"),
+    Unit("min", Dimension.TIME, 60., "M"),
+    Unit("s", Dimension.TIME, 1., "S"),
+    Unit("ms", Dimension.TIME, 1e-3, "MS"),
+    Unit("μs", Dimension.TIME, 1e-6, "US"),
+    Unit("ns", Dimension.TIME, 1e-9, "NS"),
+    Unit("ps", Dimension.TIME, 1e-12, "PS"),
+    Unit("fs", Dimension.TIME, 1e-15, "FS"),
+    Unit("as", Dimension.TIME, 1e-18, "AS"),
+    Unit("eV", Dimension.ENERGY, 1., "EV"),
+    Unit("keV", Dimension.ENERGY, 1e3, "KEV"),
+    Unit("MeV", Dimension.ENERGY, 1e6, "MEV"),
+    Unit("GeV", Dimension.ENERGY, 1e9, "GEV"),
+    Unit("b", Dimension.AREA, 1., "B"),
+    Unit("mb", Dimension.AREA, 1e-3, "MB"),
+    Unit("μb", Dimension.AREA, 1e-6, "UB"),
+    Unit("%", Dimension.SCALAR, 1e-2, "%")
+]
+
 
 class Limit(enum.Enum):        
     LOWER_THAN = enum.auto()
@@ -292,13 +301,6 @@ class Sign(enum.Enum):
     NEGATIVE = "-"
     UNSPECIFIED = 0
     POSITIVE = "+"
-
-
-class Dimension(enum.Enum):
-    TIME = enum.auto()
-    ENERGY = enum.auto()
-    AREA = enum.auto()
-    FRACTION = enum.auto()
 
 
 class Quantity:
@@ -367,7 +369,6 @@ class Quantity:
         self.unit = ""
         self.named = None
         self.offset_l, self.offset_r, self.offset = [None]*3
-        self.dimension = None
         self.reference = None
         self.comment = None
         if val is not None:
@@ -413,7 +414,7 @@ class Quantity:
             self.val = float('inf')
             self.sign = Sign.POSITIVE
             self.named = "stable"
-            self.dimension = Dimension.TIME
+            self.unit = get_unit("S")
             return
         elif frags["chars"] == "WEAK":
             self.val = 0.
@@ -499,22 +500,31 @@ class Quantity:
             return float('inf')
         return abs(int(unc)) * 10**(self.exponent - self.decimals)
     
-    def set_unit(self, unit: str):
-        unit = unit.replace("μ", "u").upper()
-        if unit in ENERGY_UNITS:
-            self.dimension = Dimension.ENERGY
-            self.unit = ENERGY_UNITS[unit][1]
-        elif unit in TIME_UNITS:
-            self.dimension = Dimension.TIME
-            self.unit = TIME_UNITS[unit][1]
-        elif unit in AREA_UNITS:
-            self.dimension = Dimension.AREA
-            self.unit = AREA_UNITS[unit][1]
-        elif unit in FRACTION_UNITS:
-            self.dimension = Dimension.FRACTION
-            self.unit = FRACTION_UNITS[unit][1]
-        else:
-            raise ValueError(f"Unknown unit: {unit}")
+    def set_unit(self, unit_symbol: str):
+        self.unit = get_unit(unit_symbol)
+    
+    def cast_to_unit(self, unit: Union[str, Unit]):
+        """Cast quantity in a different unit
+
+        Args:
+            unit: Unit to use for the returned Quantity
+        """
+        if not isinstance(unit, Unit):
+            unit = get_unit(unit)
+        if self.unit.dimension != unit.dimension:
+            raise TypeError("Mismatching Dimensions")
+        res = self * (self.unit.basis/unit.basis)
+        res.unit = unit
+        # TODO: Determine number of decimal places/exponent more intelligently
+        #   (already after multiplication)
+        res.decimals = int(self.decimals +
+                           math.log10(unit.basis/self.unit.basis))
+        if res.decimals < 0:
+            res.decimals = 0
+            res.exponent = int(self.exponent +
+                               math.log10(self.unit.basis/unit.basis))
+        return res
+
 
     def __add__(self, other):
         if isinstance(other, (int, float)):
@@ -523,6 +533,7 @@ class Quantity:
             return s
 
     def __mul__(self, other):
+        # TODO: Update number of decimal places/exponent
         if isinstance(other, (int, float)):
             s = copy.copy(self)
             s.val *= other
@@ -571,7 +582,7 @@ class Quantity:
             if self.exponent != 0:
                 res = f"{res}e{self.exponent:d}"
             if self.unit:
-                res = f"{res} {self.unit}"
+                res = f"{res} {self.unit.symb}"
             if self.offset_r:
                 res = f"{res} + {self.offset_r}"
 
@@ -615,3 +626,15 @@ class Quantity:
 
 def alt_char_float(val):
     return val.replace('|?', '?').replace('|@', '∞').replace('INFNT', '∞').strip()
+
+def parse_ensdf_unit(unit: str):
+    unit = unit.replace("μ", "u").upper()
+    return Units[unit]
+
+@lru_cache(maxsize=None)
+def get_unit(unit_symbol: str):
+    """
+    """
+    for unit in Units:
+        if unit.symb == unit_symbol or unit.ensdf_symb == unit_symbol:
+            return unit

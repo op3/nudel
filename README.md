@@ -1,4 +1,4 @@
-# nudel – Nuclear Data Extraction Library
+# 🍝 nudel – Nuclear Data Extraction Library
 
 Nudel is a parser for the Evaluated Nuclear Structure Data File (ENSDF) format implemented in Python.
 
