@@ -126,6 +126,7 @@ class Dataset:
         self.levels = []
         self.history = {}
         self.qrecords = []
+        self.normalization_records = []
         self.comments = []
         self.parents = []
         self.references = []
@@ -176,7 +177,7 @@ class Dataset:
                     elif flag_rectype.upper() == "H":
                         history += line[9:80] + " "
                     elif flag_rectype.upper() == "N":
-                        warnings.warn("Normalization records not yet implemented.")
+                        self.normalization_records.append(NormalizationRecord(self, line))
             if header:
                 continue
 
@@ -325,19 +326,45 @@ class GeneralCommentRecord(BaseRecord):
 class ParentRecord(Record):
     def __init__(self, dataset, record):
         super().__init__(dataset, record, None, None)
-        self.prop["E"] = record[0][9:19].strip()
-        self.prop["DE"] = record[0][19:21].strip()
+        self.prop["E"] = record[9:19].strip()
+        self.prop["DE"] = record[19:21].strip()
         self.prop["E"] += " " + self.prop["DE"].strip()
-        self.prop["J"] = record[0][21:39].strip()
-        self.prop["T"] = record[0][39:49].strip()
-        self.prop["DT"] = record[0][49:55].strip()
+        self.prop["J"] = record[21:39].strip()
+        self.prop["T"] = record[39:49].strip()
+        self.prop["DT"] = record[49:55].strip()
         self.prop["T"] += " " + self.prop["DT"].strip()
-        self.prop["QP"] = record[0][64:74].strip()
-        self.prop["DQP"] = record[0][74:76].strip()
+        self.prop["QP"] = record[64:74].strip()
+        self.prop["DQP"] = record[74:76].strip()
         self.prop["QP"] += " " + self.prop["DQP"].strip()
-        self.prop["ION"] = record[0][76:80].strip()
+        self.prop["ION"] = record[76:80].strip()
         self.load_prop(record[1:])
 
+        self.energy = Quantity(self.prop["E"], "KEV")
+        self.ang_mom = ang_mom_parser(self.prop["J"])
+        self.half_life = Quantity(self.prop["T"])
+        self.q_value = Quantity(self.prop["QP"], "KEV")
+
+
+class NormalizationRecord(Record):
+    def __init__(self, dataset, record):
+        super().__init__(dataset, record, None, None)
+        self.prop["NR"] = record[9:19].strip()
+        self.prop["DNR"] = record[19:21].strip()
+        self.prop["NR"] += " " + self.prop["DNR"].strip()
+        self.prop["NT"] = record[21:29].strip()
+        self.prop["DNT"] = record[29:31].strip()
+        self.prop["NT"] += " " + self.prop["DNT"].strip()
+        self.prop["BR"] = record[31:39].strip()
+        self.prop["DBR"] = record[39:41].strip()
+        self.prop["BR"] += " " + self.prop["DBR"].strip()
+        self.prop["NB"] = record[41:49].strip()
+        self.prop["DNB"] = record[49:55].strip()
+        self.prop["NB"] += " " + self.prop["DNB"].strip()
+        self.prop["NP"] = record[55:62].strip()
+        self.prop["DNP"] = record[62:64].strip()
+        self.prop["NP"] += " " + self.prop["DNP"].strip()
+        self.load_prop(record[1:])
+    
 
 class LevelRecord(Record):
     def __init__(self, dataset, record, comments, xref):
@@ -572,6 +599,8 @@ def get_record_type(record):
         return CrossReferenceRecord
     if record[0][7] == "Q":
         return QValueRecord
+    if record[0][7] == "N":
+        return NormalizationRecord
     if record[0][7] == "L":
         return LevelRecord
     if record[0][7] == "B":
@@ -591,6 +620,8 @@ def get_record_type(record):
 
 class Nuclide:
     def __init__(self, mass: int, protons: int):
+        self.mass = mass
+        self.protons = protons
         self.ensdf = get_active_ensdf()
         self.adopted_levels = self.ensdf.get_adopted_levels((mass, protons))
 
@@ -606,6 +637,13 @@ class Nuclide:
             for level in self.adopted_levels.levels[1:]:
                 if level.metastable:
                     yield level
+    
+    def get_daughters(self) -> List[Tuple[Tuple[int, int], str]]:
+        nucid = nucid_from_az((self.mass, self.protons)).strip()
+        for nucid_i, name_i in self.ensdf.datasets.keys():
+            if name_i.startswith(nucid) and "DECAY" in name_i:
+                yield (nucid_i, name_i)
+
 
 
 def rec_bracket_parser(s, i=0):

@@ -58,7 +58,7 @@ class ENSDFFileProvider(ENSDFProvider):
         self.folder = folder
         self.cachedir = Path(os.getenv("XDG_CACHE_HOME",
             Path.home()/".cache"))/"nudel"
-        self.cachedir.mkdir(exist_ok=True)
+        self.cachedir.mkdir(parents=True, exist_ok=True)
         self.index = dict()
         self.gen_index()
         self.adopted_levels = dict()

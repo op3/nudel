@@ -11,6 +11,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 
 KEYWORDS = '''\
 ensdf
+nuclear-data
 nuclear-physics
 nuclear-structure
 parser
@@ -21,8 +22,10 @@ CLASSIFIERS = '''\
 Development Status :: 3 - Alpha
 Intended Audience :: Science/Research
 License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)
-Operating System :: MacOS
+Operating System :: MacOS :: MacOS X
+Operating System :: Microsoft :: Windows
 Operating System :: POSIX
+Operating System :: POSIX :: BSD
 Operating System :: POSIX :: Linux
 Operating System :: UNIX
 Programming Language :: Python

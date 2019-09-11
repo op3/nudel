@@ -11,7 +11,9 @@ without having to worry about the details of the (complicated) data format.
 The specification is quite extensive, and thus, the present approach is currently limited to only a few important quantities.
 Especially cross-references and comments are not yet properly resolved.
 
-## Obtaining a copy of the ENSDF
+## Obtaining nuclear datasets
+
+### ENSDF
 
 To use nudel, a copy of the ENSDF is currently required.
 It can be obtained [here](https://www.nndc.bnl.gov/ensarchivals/).
@@ -20,6 +22,10 @@ These files correspond to the evaluated nuclei in the mass ranges 1–99, 100–
 Extract all files into a single folder.
 By default, nudel searches in `$XDG_DATA_HOME/ensdf` for the files (usually, this is `~/.local/share/ensdf`).
 Alternatively, you can use `$ENSDF_PATH` to point to the correct directory.
+
+### NUBASE
+
+A future version of this library might support [NUBASE](http://amdc.in2p3.fr/web/nubase_en.html). 
 
 ## Requirements
 

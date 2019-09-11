@@ -267,7 +267,7 @@ Units = [
     Unit("min", Dimension.TIME, 60., "M"),
     Unit("s", Dimension.TIME, 1., "S"),
     Unit("ms", Dimension.TIME, 1e-3, "MS"),
-    Unit("μs", Dimension.TIME, 1e-6, "US"),
+    Unit("µs", Dimension.TIME, 1e-6, "US"),
     Unit("ns", Dimension.TIME, 1e-9, "NS"),
     Unit("ps", Dimension.TIME, 1e-12, "PS"),
     Unit("fs", Dimension.TIME, 1e-15, "FS"),
@@ -626,15 +626,15 @@ class Quantity:
             return self.val >= other.val
 
 def alt_char_float(val):
-    return val.replace('|?', '?').replace('|@', '∞').replace('INFNT', '∞').strip()
-
-def parse_ensdf_unit(unit: str):
-    unit = unit.replace("μ", "u").upper()
-    return Units[unit]
+    return val.replace('|?', '?').replace(
+        '|@', '∞').replace('INFNT', '∞').strip()
 
 @lru_cache(maxsize=None)
 def get_unit(unit_symbol: str):
-    """
+    """Get Unit object by according symbol (ensdf or standard form)
+
+    Args:
+        unit_symbol: Symbol of unit
     """
     for unit in Units:
         if unit.symb == unit_symbol or unit.ensdf_symb == unit_symbol:
