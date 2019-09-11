@@ -279,7 +279,8 @@ Units = [
     Unit("b", Dimension.AREA, 1., "B"),
     Unit("mb", Dimension.AREA, 1e-3, "MB"),
     Unit("μb", Dimension.AREA, 1e-6, "UB"),
-    Unit("%", Dimension.SCALAR, 1e-2, "%")
+    Unit("%", Dimension.SCALAR, 1e-2, "%"),
+    Unit("", Dimension.SCALAR, 1., ""),
 ]
 
 
@@ -366,7 +367,7 @@ class Quantity:
         self.questionable = False
         self.assumed = False
 
-        self.unit = ""
+        self.unit = None
         self.named = None
         self.offset_l, self.offset_r, self.offset = [None]*3
         self.reference = None

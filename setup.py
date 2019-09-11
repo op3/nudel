@@ -35,12 +35,12 @@ Topic :: Scientific/Engineering :: Physics
 '''
 
 setup(
-    name='hdtv',
+    name='nudel',
     version='0.0.1',
-    description='nuclstruc',
+    description='Nuclear Data Extraction Library',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    url='https://github.com/op3/nuclstruc',
+    url='https://github.com/op3/nudel',
     author='O. Papst',
     author_email='opapst@ikp.tu-darmstadt.de',
     license='GPL',
@@ -53,7 +53,7 @@ setup(
         ],
     },
     packages=[
-        'nuclstruc',
+        'nudel',
     ],
 )
 

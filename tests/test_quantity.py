@@ -19,10 +19,10 @@
 
 """Tests for nudel.util.Quantity"""
 
-from math import isnan
+from math import isnan, isclose
 import pytest
 
-from nudel.util import Quantity, Limit, Dimension, Sign
+from nudel.util import Quantity, Limit, Dimension, Sign, get_unit
 
 
 QUANTITY_DEFAULT = {
@@ -42,11 +42,10 @@ QUANTITY_DEFAULT = {
     'from_systematics': False,
     'questionable': False,
     'assumed': False,
-    'unit': '',
+    'unit': None,
     'named': None,
     'offset_l': None,
     'offset_r': None,
-    'dimension': None,
     'reference': None,
     'comment': None
 }
@@ -108,15 +107,13 @@ def cmp_nan_safe(a, b):
         "plus": 2.8000000000000003,
         "minus": 1.4000000000000001,
         "decimals": 1,
-        "unit": "ps",
-        "dimension": Dimension.TIME,
+        "unit": get_unit("ps"),
     }, "10.4(+28-14) ps"],
     ["6.1 PS 3", {
         "val": 6.1,
         "pm": 0.30000000000000004,
         "decimals": 1,
-        "unit": "ps",
-        "dimension": Dimension.TIME,
+        "unit": get_unit("ps"),
     }, "6.1(3) ps"],
     ["0.3 LT", {
         "upper_bound": 0.3,
@@ -155,15 +152,13 @@ def cmp_nan_safe(a, b):
     ["550 PS 20", {
         "val": 550.0,
         "pm": 20,
-        "unit": "ps",
-        "dimension": Dimension.TIME,
+        "unit": get_unit("ps"),
     }, "550(20) ps"],
     ["0.3 NS LE", {
         "upper_bound": 0.3,
         "upper_bound_inclusive": True,
         "decimals": 1,
-        "unit": "ns",
-        "dimension": Dimension.TIME,
+        "unit": get_unit("ns"),
     }, "≤ 0.3 ns"],
     ["8E+2", {
         "val": 800.0,
@@ -172,8 +167,7 @@ def cmp_nan_safe(a, b):
     ["7 PS LE", {
         "upper_bound": 7.0,
         "upper_bound_inclusive": True,
-        "unit": "ps",
-        "dimension": Dimension.TIME,
+        "unit": get_unit("ps"),
     }, "≤ 7 ps"],
     ["-8150 60", {
         "val": -8150.0,
@@ -195,7 +189,7 @@ def cmp_nan_safe(a, b):
         "val": float('inf'),
         "sign": Sign.POSITIVE,
         "named": 'stable',
-        "dimension": Dimension.TIME,
+        "unit": get_unit("s"),
     }, "stable"],
     ["WEAK", {
         "val": 0.0,
@@ -225,8 +219,7 @@ def cmp_nan_safe(a, b):
     ["6.0 NS", {
         "val": 6.0,
         "decimals": 1,
-        "unit": "ns",
-        "dimension": Dimension.TIME,
+        "unit": get_unit("ns"),
     }, "6.0 ns"],
     ["2.20E4 SY", {
         "val": 22000.0,
@@ -261,15 +254,13 @@ def cmp_nan_safe(a, b):
         "lower_bound_inclusive": True,
         "exponent": 20,
         "decimals": 1,
-        "unit": "a",
-        "dimension": Dimension.TIME,
+        "unit": get_unit("a"),
     }, "≥ 6.7e20 a"],
     ["43 MS +21-15", {
         "val": 43.0,
         "plus": 21,
         "minus": 15,
-        "unit": "ms",
-        "dimension": Dimension.TIME,
+        "unit": get_unit("ms"),
     }, "43(+21-15) ms"],
     ["0+X", {
         "val": 0.0,
@@ -300,20 +291,17 @@ def cmp_nan_safe(a, b):
         "pm": 180,
         "exponent": 3,
         "decimals": 2,
-        "unit": "a",
-        "dimension": Dimension.TIME,
+        "unit": get_unit("a"),
     }, "1.20(18)e3 a"],
     ["200 KEV", {
         "val": 200.0,
-        "unit": "keV",
-        "dimension": Dimension.ENERGY,
+        "unit": get_unit("keV"),
     }, "200 keV"],
     ["10E-3 EV 2", {
         "val": 0.01,
         "pm": 0.002,
         "exponent": -3,
-        "unit": "eV",
-        "dimension": Dimension.ENERGY,
+        "unit": get_unit("eV"),
     }, "10(2)e-3 eV"],
     ["SN+0.02343 2", {
         "val": 0.02343,
@@ -372,22 +360,19 @@ def cmp_nan_safe(a, b):
         "val": 0.00011399999999999999,
         "exponent": -4,
         "decimals": 2,
-        "unit": "eV",
-        "dimension": Dimension.ENERGY,
+        "unit": get_unit("eV"),
     }, "1.14e-4 eV"],
     ["6E-2 EV GT", {
         "lower_bound": 0.06,
         "lower_bound_inclusive": False,
         "exponent": -2,
-        "unit": "eV",
-        "dimension": Dimension.ENERGY,
+        "unit": get_unit("eV"),
     }, "> 6e-2 eV"],
     [".0003 EV 4", {
         "val": 0.0003,
         "pm": 0.0004,
         "decimals": 4,
-        "unit": "eV",
-        "dimension": Dimension.ENERGY,
+        "unit": get_unit("eV"),
     }, "0.0003(4) eV"],
     ["-4014", {
         "val": -4014.0,
@@ -404,8 +389,7 @@ def cmp_nan_safe(a, b):
         "minus": 60,
         "exponent": 2,
         "decimals": 1,
-        "unit": "fs",
-        "dimension": Dimension.TIME,
+        "unit": get_unit("fs"),
     }, "1.5(+15-6)e2 fs"],
     [".00005 2", {
         "val": 5e-05,
@@ -442,8 +426,7 @@ def cmp_nan_safe(a, b):
         "plus": 0.09,
         "minus": 0.05,
         "decimals": 2,
-        "unit": "ns",
-        "dimension": Dimension.TIME,
+        "unit": get_unit("ns"),
     }, "0.52(+9-5) ns"],
     ["SN+Y", {
         "val": 0.0,
@@ -485,8 +468,7 @@ def cmp_nan_safe(a, b):
         "minus": 0.04,
         "decimals": 2,
         "sign": Sign.POSITIVE,
-        "unit": "ps",
-        "dimension": Dimension.TIME,
+        "unit": get_unit("ps"),
     }, "+0.16(+8-4) ps"],
     ["-.036 13", {
         "val": -0.036,
@@ -553,8 +535,7 @@ def cmp_nan_safe(a, b):
         "plus": 5200,
         "minus": 1700,
         "exponent": 2,
-        "unit": "fs",
-        "dimension": Dimension.TIME,
+        "unit": get_unit("fs"),
     }, "52(+52-17)e2 fs"],
     [".004 CA", {
         "val": 0.004,
@@ -629,11 +610,26 @@ def test_quantity(quantity, mod_dict, printed):
 
 def test_default_unit():
     q = Quantity("45 2", default_unit="KEV")
-    assert q.unit == "keV"
+    assert q.unit == get_unit("keV")
 
 def test_default_unit_no_overwrite():
     q = Quantity("45 MEV 2", default_unit="KEV")
-    assert q.unit == "MeV"
+    assert q.unit == get_unit("MeV")
 
 # TODO: The following quantities currently fail:
 #   '6.3 PS 9-60', '0.61,0.40', '0.03-0.04', '.05,.1'
+
+def test_quantity_cast_unit():
+    qfs = Quantity("10 FS")
+    assert isclose(qfs.val, 1e1)
+    assert qfs.unit == get_unit("fs")
+
+    qas = qfs.cast_to_unit("as")
+    assert isclose(qas.val, 1e4)
+    assert qas.unit == get_unit("as")
+
+    qns = qfs.cast_to_unit("ns")
+    assert isclose(qns.val, 1e-5)
+    assert qns.unit == get_unit("ns")
+
+    
