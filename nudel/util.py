@@ -538,6 +538,11 @@ class Quantity:
         if isinstance(other, (int, float)):
             s = copy.copy(self)
             s.val *= other
+            s.plus *= other
+            s.minus *= other
+            s.pm *= other
+            s.lower_bound *= other
+            s.upper_bound *= other
             return s
 
     __radd__ = __add__
