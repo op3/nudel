@@ -1,5 +1,7 @@
 # 🍝 nudel – Nuclear Data Extraction Library
 
+[![License](https://img.shields.io/badge/License-GPL%20v3+-blue.svg)](COPYING)
+
 Nudel is a parser for the Evaluated Nuclear Structure Data File (ENSDF) format implemented in Python.
 
 ## Introduction

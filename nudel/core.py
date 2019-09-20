@@ -176,7 +176,7 @@ class Dataset:
                         self.qrecords.append(QValueRecord(self, line))
                     elif flag_rectype.upper() == "H":
                         history += line[9:80] + " "
-                    elif flag_rectype.upper() == "N":
+                    elif flag_rectype.upper() == "N" and flag_cont == flag_com == " ":
                         self.normalization_records.append(NormalizationRecord(self, line))
             if header:
                 continue
@@ -364,6 +364,10 @@ class NormalizationRecord(Record):
         self.prop["DNP"] = record[62:64].strip()
         self.prop["NP"] += " " + self.prop["DNP"].strip()
         self.load_prop(record[1:])
+
+        self.branching_ratio = Quantity(self.prop["BR"])
+        self.rel_intensity_multiplier = Quantity(self.prop["NR"])
+        self.trans_intensity_multiplier = Quantity(self.prop["NT"])
     
 
 class LevelRecord(Record):
@@ -548,6 +552,14 @@ class GammaRecord(DecayRecord):
 
         self.energy = Quantity(self.prop["E"], "KEV")
         self.rel_intensity = Quantity(self.prop["RI"])
+        self.intensity = None
+        if self.dataset.normalization_records:
+            norm = self.dataset.normalization_records[0]
+            self.intensity = self.rel_intensity
+            if norm.branching_ratio.val:
+                self.intensity *= norm.branching_ratio.val
+            if norm.rel_intensity_multiplier.val:
+                self.intensity *= norm.rel_intensity_multiplier.val
         self.multipolarity = self.prop["M"]
         self.mixing_ratio = Quantity(self.prop["MR"])
         self.conversion_coeff = Quantity(self.prop["CC"])
