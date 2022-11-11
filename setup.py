@@ -6,10 +6,10 @@ from os import path
 here = path.abspath(path.dirname(__file__))
 
 # Get the long description from the README file
-with open(path.join(here, 'README.md'), encoding='utf-8') as f:
+with open(path.join(here, "README.md"), encoding="utf-8") as f:
     long_description = f.read()
 
-KEYWORDS = '''\
+KEYWORDS = """\
 ensdf
 nuclear-data
 nuclear-physics
@@ -17,8 +17,8 @@ nuclear-structure
 parser
 physics
 python
-'''
-CLASSIFIERS = '''\
+"""
+CLASSIFIERS = """\
 Development Status :: 3 - Alpha
 Intended Audience :: Science/Research
 License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)
@@ -33,30 +33,29 @@ Programming Language :: Python :: 3
 Programming Language :: Python :: 3.6
 Programming Language :: Python :: 3.7
 Programming Language :: Python :: 3.8
+Programming Language :: Python :: 3.9
+Programming Language :: Python :: 3.10
+Programming Language :: Python :: 3.11
 Topic :: Scientific/Engineering
 Topic :: Scientific/Engineering :: Physics
-'''
+"""
 
 setup(
-    name='nudel',
-    version='0.0.1',
-    description='Nuclear Data Extraction Library',
+    name="nudel",
+    version="0.0.1",
+    description="Nuclear Data Extraction Library",
     long_description=long_description,
-    long_description_content_type='text/markdown',
-    url='https://github.com/op3/nudel',
-    author='O. Papst',
-    author_email='opapst@ikp.tu-darmstadt.de',
-    license='GPL',
-    classifiers=CLASSIFIERS.strip().split('\n'),
-    keywords=KEYWORDS.strip().replace('\n', ' '),
+    long_description_content_type="text/markdown",
+    url="https://github.com/op3/nudel",
+    author="O. Papst",
+    author_email="opapst@ikp.tu-darmstadt.de",
+    license="GPL",
+    classifiers=CLASSIFIERS.strip().split("\n"),
+    keywords=KEYWORDS.strip().replace("\n", " "),
     extras_require={
-        'test': [
-            'pytest',
-            'pytest-cov'
-        ],
+        "test": ["pytest", "pytest-cov"],
     },
     packages=[
-        'nudel',
+        "nudel",
     ],
 )
-
