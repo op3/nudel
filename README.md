@@ -19,11 +19,10 @@ Especially cross-references and comments are not yet properly resolved.
 
 To use nudel, a copy of the ENSDF is currently required.
 It can be obtained [here](https://www.nndc.bnl.gov/ensarchivals/).
-You have to download three files ending in `_099.zip`, `_199.zip` and `_299.zip`.
-These files correspond to the evaluated nuclei in the mass ranges 1–99, 100–199 and 200–299.
-Extract all files into a single folder.
-By default, nudel searches in `$XDG_DATA_HOME/ensdf` for the files (usually, this is `~/.local/share/ensdf`).
-Alternatively, you can use `$ENSDF_PATH` to point to the correct directory.
+Extract the archive to `$XDG_DATA_HOME/ensdf`.
+Usually, this path corresponds to `~/.local/share/ensdf`.
+You should end up with files such as `~/.local/share/ensdf/ensdf.208`, etc.
+Alternatively, you can set `$ENSDF_PATH` to point to a different directory for the data.
 
 ### NUBASE
 
