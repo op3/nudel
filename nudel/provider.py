@@ -87,7 +87,7 @@ class ENSDFFileProvider(ENSDFProvider):
                 linestart = f.tell()
                 line = f.readline()
                 while line:
-                    if line[2] != " " and line[5:9] == "    ":
+                    if line != "\n" and line[2] != " " and line[5:9] == "    ":
                         nucleus = az_from_nucid(line[0:5])
                         self.index[(nucleus, line[9:39].strip())] = linestart
                     linestart = f.tell()
