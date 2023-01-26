@@ -812,6 +812,18 @@ class Quantity:
             return self.val >= other
         elif isinstance(other, Quantity):
             return self.val >= other.val
+    
+    def __eq__(self, other):
+        if isinstance(other, (int, float)):
+            return self.val == other
+        elif isinstance(other, Quantity):
+            return self.val == other.val
+    
+    def __ne__(self, other):
+        if isinstance(other, (int, float)):
+            return self.val != other
+        elif isinstance(other, Quantity):
+            return self.val != other.val
 
 
 def alt_char_float(val):

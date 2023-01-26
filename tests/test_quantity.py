@@ -1007,3 +1007,25 @@ def test_quantity_cast_unit():
     qns = qfs.cast_to_unit("ns")
     assert isclose(qns.val, 1e-5)
     assert qns.unit == get_unit("ns")
+
+
+def test_quantity_cmp():
+    q0 = Quantity("0.0 keV")
+    q1 = Quantity("1.0 keV")
+    assert q0 < q1
+    assert q0 <= q0
+    assert q0 <= q1
+    assert q1 > q0
+    assert q1 >= q0
+    assert q0 >= q0
+    assert q0 == q0
+    assert q0 != q1
+
+    assert q0 < 1.0
+    assert 0.0 <= q0
+    assert q0 <= 1.0
+    assert q1 >= 0.0
+    assert 1.0 >= q0
+    assert q0 >= 0.0
+    assert q0 == 0.0
+    assert q0 != 1.0
