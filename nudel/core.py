@@ -25,7 +25,7 @@ from typing import Iterator, List, Optional, Tuple, Union
 import warnings
 
 from .provider import ENSDFProvider, ENSDFFileProvider
-from .util import nucid_from_az, az_from_nucid, Quantity
+from .util import nucid_from_az, az_from_nucid, Quantity, ELEMENTS
 
 
 class ENSDF:
@@ -252,6 +252,10 @@ class Dataset:
                 self.jpi_index[(ang_mom.val, ang_mom.parity)] = [level]
             return len(self.jpi_index[(ang_mom.val, ang_mom.parity)])
 
+    def __repr__(self):
+        mass, _ = az_from_nucid(self.dataset.nucid)
+        return f"<{self.__class__.__name__}: {self.nucid} ({self.dataset_id})>"
+
 
 class BaseRecord:
     pass
@@ -323,6 +327,9 @@ class QValueRecord(BaseRecord):
         self.proton_separation = Quantity(self.prop["P"])
         self.alpha_decay = Quantity(self.prop["A"])
 
+    def __repr__(self):
+        return f"<{self.__class__.__name__}: Q-={self.q_beta_minus}, N={self.neutron_separation}, P={self.proton_separation}, A={self.alpha_decay}>"
+
 
 class CrossReferenceRecord(BaseRecord):
     def __init__(self, dataset, line):
@@ -340,6 +347,12 @@ class GeneralCommentRecord(BaseRecord):
         # self.rtype = line[7]
         # self.psym = line[8]
         # self.comment_text = line[9:80]
+
+    def __repr__(self):
+        if len(self.comment) > 40:
+            return f"<{self.__class__.__name__}: '{self.comment[:40]}…'>"
+        else:
+            return f"<{self.__class__.__name__}: '{self.comment}'>"
 
 
 class ParentRecord(Record):
@@ -454,6 +467,9 @@ class LevelRecord(Record):
     def add_decay(self, decay):
         self.decays.append(decay)
 
+    def __repr__(self):
+        return f"<{self.__class__.__name__}: {self.energy} {self.ang_mom}>"
+
 
 class DecayRecord(Record):
     def __init__(self, dataset, record, comments, xref, dest_level):
@@ -482,6 +498,9 @@ class BetaRecord(DecayRecord):
         self.questionable = self.prop["Q"] == "?"
         self.expected = self.prop["Q"] == "S"
 
+    def __repr__(self):
+        return f"<{self.__class__.__name__}: {self.energy}>"
+
 
 class ECRecord(DecayRecord):
     def __init__(self, dataset, record, comments, xref, dest_level):
@@ -506,6 +525,13 @@ class ECRecord(DecayRecord):
         self.prop["Q"] = record[0][79].strip()
         self.load_prop(record[1:])
 
+        self.energy = Quantity(self.prop["E"], "KEV")
+        self.questionable = self.prop["Q"] == "?"
+        self.expected = self.prop["Q"] == "S"
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__}: {self.energy}>"
+
 
 class AlphaRecord(DecayRecord):
     def __init__(self, dataset, record, comments, xref, dest_level):
@@ -522,6 +548,13 @@ class AlphaRecord(DecayRecord):
         self.prop["C"] = record[0][76].strip()
         self.prop["Q"] = record[0][79].strip()
         self.load_prop(record[1:])
+
+        self.energy = Quantity(self.prop["E"], "KEV")
+        self.questionable = self.prop["Q"] == "?"
+        self.expected = self.prop["Q"] == "S"
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__}: {self.energy}>"
 
 
 class ParticleRecord(DecayRecord):
@@ -547,6 +580,13 @@ class ParticleRecord(DecayRecord):
 
         self.prompt_emission = self.prop["D"] == " "
         self.delayed_emission = self.prop["D"] == "D"
+
+        self.energy = Quantity(self.prop["E"], "KEV")
+        self.questionable = self.prop["Q"] == "?"
+        self.expected = self.prop["Q"] == "S"
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__}: {self.energy}>"
 
 
 class GammaRecord(DecayRecord):
@@ -626,6 +666,13 @@ class GammaRecord(DecayRecord):
         except ValueError:
             pass
 
+    def __repr__(self):
+        return (
+            f"<{self.__class__.__name__}: {self.energy}"
+            f"({self.orig_level.energy} {self.orig_level.ang_mom} → "
+            f"{self.dest_level.energy} {self.dest_level.ang_mom})>"
+        )
+
 
 class ReferenceRecord(BaseRecord):
     def __init__(self, dataset, line):
@@ -686,6 +733,13 @@ class Nuclide:
         for nucid_i, name_i in self.ensdf.datasets.keys():
             if name_i.startswith(nucid) and "DECAY" in name_i:
                 yield (nucid_i, name_i)
+
+    def __str__(self):
+        element = ELEMENTS[self.protons]
+        return f"{self.mass}{element}"
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__}: {self}>"
 
 
 def rec_bracket_parser(s, i=0):
