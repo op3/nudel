@@ -340,10 +340,7 @@ def az_from_nucid(nucid: str) -> Tuple[int, int]:
     mass, nucleus = re.compile(r"(\d+)([A-Za-z]*)?").search(nucid).groups()
     if len(mass) > 3:
         return int(nucid[:3]), int(nucid[3:]) + 100
-    try:
-        return int(mass), ELEMENTS.index(nucleus[0] + nucleus[1:].lower())
-    except IndexError:
-        return int(nucid), None
+    return int(mass), ELEMENTS.index(nucleus[0] + nucleus[1:].lower())
 
 
 def nucid_from_az(nucleus):

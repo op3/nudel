@@ -158,7 +158,10 @@ class Dataset:
             if header:
                 if flag_com.lower() in "cdt":
                     if flag_cont != " ":
-                        self.comments[-1].append(line)
+                        try:
+                            self.comments[-1].append(line)
+                        except IndexError:
+                            self.comments.append([line])
                     else:
                         self.comments.append([line])
                 else:
@@ -264,30 +267,38 @@ class Record(BaseRecord):
             for comment in comments:
                 self.comments.append(GeneralCommentRecord(dataset, comment))
 
+    def parse_entry(self, entry):
+        entry = entry.strip()
+        if not entry:
+            return
+        if "=" in entry:
+            quant, value = entry.split("=", maxsplit=1)
+            self.prop[quant.strip()] = value.strip()
+            return
+        for symb in ["|?", "?"]:
+            if symb in entry:
+                quant, value = entry.split(symb, maxsplit=1)
+                self.prop[quant.strip()] = f"{value.strip()} AP"
+                return
+        for symb in ["<", ">"]:
+            if symb in entry:
+                quant, value = entry.split(symb, maxsplit=1)
+                self.prop[quant.strip()] = symb + value.strip()
+                return
+        for abbr in ["GT", "LT", "GE", "LE", "AP", "CA", "SY"]:
+            if f" {abbr} " in entry:
+                quant, quant, value = entry.split(" ", maxsplit=2)
+                self.prop[quant.strip()] = f"{value.strip()} {quant}"
+                return
+        if entry[-1] == "?":
+            self.prop[entry[:-1]] = "?"
+            return
+        raise ValueError(f"Cannot process property: '{entry}'.")
+
     def load_prop(self, lines):
         for line in lines:
             for entry in line[9:].split("$"):
-                entry = entry.strip()
-                if not entry:
-                    continue
-                if "=" in entry:
-                    quant, value = entry.split("=", maxsplit=1)
-                    self.prop[quant.strip()] = value.strip()
-                else:
-                    for symb in ["<", ">"]:
-                        if symb in entry:
-                            quant, value = entry.split(symb, maxsplit=1)
-                            self.prop[quant.strip()] = symb + value.strip()
-                            return
-                    for abbr in ["GT", "LT", "GE", "LE", "AP", "CA", "SY"]:
-                        if f" {abbr} " in entry:
-                            quant, quant, value = entry.split(" ", maxsplit=2)
-                            self.prop[quant.strip()] = f"{value.strip()} {quant}"
-                            return
-                    if entry[-1] == "?":
-                        self.prop[entry[:-1]] = "?"
-                        return
-                    raise ValueError(f"Cannot process property: '{entry}'.")
+                self.parse_entry(entry)
 
 
 class QValueRecord(BaseRecord):
