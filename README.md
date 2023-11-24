@@ -24,10 +24,6 @@ Usually, this path corresponds to `~/.local/share/ensdf`.
 You should end up with files such as `~/.local/share/ensdf/ensdf.208`, etc.
 Alternatively, you can set `$ENSDF_PATH` to point to a different directory for the data.
 
-### NUBASE
-
-A future version of this library might support [NUBASE](http://amdc.in2p3.fr/web/nubase_en.html). 
-
 ## Requirements
 
 - python>=3.6
@@ -42,7 +38,7 @@ This is a minimal usage example, documentation will be improved in a future vers
 ```python
 from nudel import Nuclide
 
-molybdenum94 = Nuclide(ensdf, 94, 42)
+molybdenum94 = Nuclide(94, 42)
 ```
 
 ## Examples
