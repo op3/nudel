@@ -115,6 +115,7 @@ class Dataset:
         self.ensdf = get_active_ensdf()
         self.header, *self.raw = dataset_plain.split("\n")
         self.nucid = self.header[0:5].strip()
+        self.mass, self.protons = az_from_nucid(self.nucid)
         self.dataset_id = self.header[9:39].strip()
         self.dataset_ref = self.header[39:65].strip()
         self.publication = self.header[65:74].strip()
@@ -253,7 +254,6 @@ class Dataset:
             return len(self.jpi_index[(ang_mom.val, ang_mom.parity)])
 
     def __repr__(self):
-        mass, _ = az_from_nucid(self.dataset.nucid)
         return f"<{self.__class__.__name__}: {self.nucid} ({self.dataset_id})>"
 
 
@@ -264,6 +264,7 @@ class BaseRecord:
 class Record(BaseRecord):
     def __init__(self, dataset, record, comments, xref):
         self.prop = dict()
+        self.record = record
         self.dataset = dataset
         self.comments = []
         self.xref = xref

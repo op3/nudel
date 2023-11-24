@@ -336,12 +336,14 @@ ALT_CHARS2 = {
 }
 
 
-def az_from_nucid(nucid: str) -> Tuple[int, int]:
+def az_from_nucid(nucid: str) -> Tuple[int, int | None]:
     mass, nucleus = re.compile(r"(\d+)([A-Za-z]*)?").search(nucid).groups()
     if len(mass) > 3:
         return int(nucid[:3]), int(nucid[3:]) + 100
-    return int(mass), ELEMENTS.index(nucleus[0] + nucleus[1:].lower())
-
+    try:
+        return int(mass), ELEMENTS.index(nucleus[0] + nucleus[1:].lower())
+    except IndexError:
+        return int(nucid), None
 
 def nucid_from_az(nucleus):
     mass, Z = nucleus
