@@ -338,6 +338,9 @@ class CrossReferenceRecord(BaseRecord):
         self.dssym = line[8]
         self.dsid = line[9:39].strip()
 
+    def __repr__(self):
+        return f"<{self.dssym}: {self.dsid}>"
+
 
 class GeneralCommentRecord(BaseRecord):
     def __init__(self, dataset, comment):
