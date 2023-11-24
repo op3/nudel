@@ -131,7 +131,7 @@ class Dataset:
         self.comments = []
         self.parents = []
         self.references = []
-        self.cross_references = []
+        self.cross_references = {}
         self._parse_dataset()
 
     def _add_record(self, record, comments, xref, level=None):
@@ -171,7 +171,8 @@ class Dataset:
                     ):
                         header = False
                     elif flag_rectype == "X":
-                        self.cross_references.append(CrossReferenceRecord(self, line))
+                        crr = CrossReferenceRecord(self, line)
+                        self.cross_references[crr.dssym] = crr
                     elif flag_rectype == "P":
                         self.parents.append(ParentRecord(self, line))
                     elif flag_rectype == "R":
@@ -339,7 +340,7 @@ class CrossReferenceRecord(BaseRecord):
         self.dsid = line[9:39].strip()
 
     def __repr__(self):
-        return f"<{self.dssym}: {self.dsid}>"
+        return f"<{self.__class__.__name__}: {self.dsid}>"
 
 
 class GeneralCommentRecord(BaseRecord):
