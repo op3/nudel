@@ -21,6 +21,7 @@
 
 from datetime import datetime
 import re
+from dataclasses import dataclass
 from typing import Iterator, List, Optional, Tuple, Union
 import warnings
 
@@ -116,6 +117,7 @@ class Dataset:
         self.header, *self.raw = dataset_plain.split("\n")
         self.nucid = self.header[0:5].strip()
         self.mass, self.protons = az_from_nucid(self.nucid)
+        self.nucleus = (self.mass, self.protons)
         self.dataset_id = self.header[9:39].strip()
         self.dataset_ref = self.header[39:65].strip()
         self.publication = self.header[65:74].strip()
@@ -263,15 +265,28 @@ class BaseRecord:
 
 
 class Record(BaseRecord):
-    def __init__(self, dataset, record, comments, xref):
+    def __init__(self, dataset, record, comments: list, xref: list):
         self.prop = dict()
         self.record = record
         self.dataset = dataset
         self.comments = []
-        self.xref = xref
+        self._xref = xref
+        self.parse_xref()
         if comments:
             for comment in comments:
                 self.comments.append(GeneralCommentRecord(dataset, comment))
+
+    def parse_xref(self):
+        self.xref = {}
+        for xref in self._xref:
+            refs = re.search(r'.*XREF=(.*)\$.*', xref)
+            if refs is None:
+                continue
+            refs = re.findall(r'([A-Z])(?:\(([^\)]*)\))?', refs.group(1))
+            for char, comment in refs:
+                self.xref[char] = XReference(char, comment, self.dataset.cross_references[char])
+
+
 
     def parse_entry(self, entry):
         entry = entry.strip()
@@ -335,9 +350,13 @@ class QValueRecord(BaseRecord):
 
 class CrossReferenceRecord(BaseRecord):
     def __init__(self, dataset, line):
-        self.dataset = dataset
+        self.parent_dataset = dataset
         self.dssym = line[8]
         self.dsid = line[9:39].strip()
+
+    def get_dataset(self):
+        return ENSDF.active_ensdf.get_dataset(
+            self.parent_dataset.nucleus, self.dsid)
 
     def __repr__(self):
         return f"<{self.__class__.__name__}: {self.dsid}>"
@@ -686,6 +705,13 @@ class ReferenceRecord(BaseRecord):
         self.prop["MASS"] = line[0:3].strip()
         self.prop["KEYNUM"] = line[9:17].strip()
         self.prop["REFERENCE"] = line[17:80].strip()
+
+
+@dataclass
+class XReference:
+    char: str
+    comment: str
+    reference: CrossReferenceRecord
 
 
 def get_record_type(record):

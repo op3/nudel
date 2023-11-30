@@ -26,7 +26,7 @@ Alternatively, you can set `$ENSDF_PATH` to point to a different directory for t
 
 ## Requirements
 
-- python>=3.6
+- python>=3.7
 - pytest (*optional, only for unit tests*)
 
 No further libraries are required!
