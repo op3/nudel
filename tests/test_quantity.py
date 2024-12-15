@@ -969,6 +969,15 @@ def cmp_nan_safe(a, b):
             },
             "~ 4939.8 + X",
         ],
+        [
+            "45 15 LE",
+            {
+                "pm": 15,
+                "upper_bound": 45.0,
+                "upper_bound_inclusive": True,
+            },
+            "≤ 45(15)",
+        ],
     ],
 )
 def test_quantity(quantity, mod_dict, printed):

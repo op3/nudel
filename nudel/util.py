@@ -454,11 +454,11 @@ class Quantity:
         (?:\s*)
         (?P<chars>(?:[MUNPFA]?S|[KM]?EV|[UM]?B|STABLE|WEAK|[YDHM])?)
         (?:\s*)
-        (?P<limit>(?:[LG][TE]|AP|CA|SY)?)
-        (?:\s*)
         (?P<unc>(?:\s[\d∞]+)?)
         (?P<unc_pm>(?:\+[\d∞]+\s?-[\d∞]+)?)
         (?P<unc_mp>(?:-[\d∞]+\s?\+[\d∞]+)?)
+        (?:\s*)
+        (?P<limit>(?:[LG][TE]|AP|CA|SY)?)
         (?P<comment>(?:\s[a-z][a-zA-Z0-9,.;\s]+)?)
         $""",
         re.X,
