@@ -308,8 +308,8 @@ class Record(BaseRecord):
                 return
         for abbr in ["GT", "LT", "GE", "LE", "AP", "CA", "SY"]:
             if f" {abbr} " in entry:
-                quant, quant, value = entry.split(" ", maxsplit=2)
-                self.prop[quant.strip()] = f"{value.strip()} {quant}"
+                quant, abbr, value = entry.split(" ", maxsplit=2)
+                self.prop[quant.strip()] = f"{value.strip()} {abbr}"
                 return
         if entry[-1] == "?":
             self.prop[entry[:-1]] = "?"
