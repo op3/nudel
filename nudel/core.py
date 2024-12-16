@@ -279,14 +279,17 @@ class Record(BaseRecord):
     def parse_xref(self):
         self.xref = {}
         for xref in self._xref:
-            refs = re.search(r'.*XREF=(.*)\$.*', xref)
+            refs = re.search(r".*XREF=([^\$]*)(\$(.*))?", xref.strip())
             if refs is None:
                 continue
-            refs = re.findall(r'([A-Z])(?:\(([^\)]*)\))?', refs.group(1))
+            comments_all = refs.group(2)
+            refs = re.findall(r"([A-Z])(?:\(([^\)]*)\))?", refs.group(1))
             for char, comment in refs:
-                self.xref[char] = XReference(char, comment, self.dataset.cross_references[char])
-
-
+                self.xref[char] = XReference(
+                    char,
+                    (comment or "") + (comments_all or ""),
+                    self.dataset.cross_references[char],
+                )
 
     def parse_entry(self, entry):
         entry = entry.strip()
@@ -355,8 +358,7 @@ class CrossReferenceRecord(BaseRecord):
         self.dsid = line[9:39].strip()
 
     def get_dataset(self):
-        return ENSDF.active_ensdf.get_dataset(
-            self.parent_dataset.nucleus, self.dsid)
+        return ENSDF.active_ensdf.get_dataset(self.parent_dataset.nucleus, self.dsid)
 
     def __repr__(self):
         return f"<{self.__class__.__name__}: {self.dsid}>"
@@ -710,7 +712,7 @@ class ReferenceRecord(BaseRecord):
 @dataclass
 class XReference:
     char: str
-    comment: str
+    comments: str
     reference: CrossReferenceRecord
 
 
