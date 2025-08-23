@@ -19,6 +19,8 @@
 
 """Python interface for ENSDF nuclear data"""
 
+__version__ = "0.0.1"
+
 from .core import Nuclide, get_active_ensdf
 
 ensdf = get_active_ensdf()
