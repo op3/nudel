@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+version = {attr = "nudel.__version__"}
+
+[project]
+name = "nudel"
+dynamic = ["version"]
+requires-python = ">=3.7"
+
+authors = [
+  {name = "Oliver Papst", email = "opapst@ikp.tu-darmstadt.de"}
+]
+
+maintainers = [
+  {name = "Oliver Papst", email = "opapst@ikp.tu-darmstadt.de"}
+]
+
+description = "Nuclear Data Extraction Library"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+
+keywords = [
+  "ensdf",
+  "nuclear-data",
+  "nuclear-physics",
+  "nuclear-structure",
+  "parser",
+  "physics",
+  "python"
+]
+
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Operating System :: MacOS :: MacOS X",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX",
+  "Operating System :: POSIX :: BSD",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: UNIX",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.7",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Physics"
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest",
+  "pytest-cov"
+]
+
+[project.urls]
+Repository = "https://github.com/op3/nudel.git"
+"Bug Tracker" = "https://github.com/op3/nudel/issues"
+"Copying" = "https://github.com/op3/nudel/blob/master/COPYING"
+
+[tool.pytest.ini_options]
+addopts = "--cov=nudel --verbose"
