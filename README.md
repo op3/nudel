@@ -28,6 +28,7 @@ Alternatively, you can set `$ENSDF_PATH` to point to a different directory for t
 
 - python>=3.7
 - pytest (*optional, only for unit tests*)
+- pytest-cov (*optional, only for unit tests*)
 
 No further libraries are required!
 
