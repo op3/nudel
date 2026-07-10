@@ -287,6 +287,10 @@ class Dataset:
         self.date: datetime | None = None
         with contextlib.suppress(ValueError):
             self.date = datetime.strptime(self.header[74:80].strip(), "%Y%m")
+        self.formatted_general_comments = []
+        self.alternative_labels = {}
+        self.field_footnotes = {}
+        self.specific_footnotes = {}
         self.records: list[BaseRecord] = []
         self.levels: list[LevelRecord] = []
         self.history: dict[str, str] = {}
@@ -328,6 +332,7 @@ class Dataset:
         level: LevelRecord | None = None
         history = ""
         header = True
+        last_field: TextField | None = None
 
         for line in self.raw[:-1]:
             flag_cont, flag_com, flag_rectype, flag_particle = line[5:9]
@@ -338,8 +343,34 @@ class Dataset:
                             self.comments[-1].append(line)
                         except IndexError:
                             self.comments.append([line])
+
+                        if last_field is None:
+                            raise ValueError(
+                                "Continuation line with no preceding field"
+                            )
+                        last_field.append(line[9:].strip())
+                        continue
+
+                    if "$LABEL=" in line:
+                        split_dollar = line[9:].split("$", 1)
+                        text = None
+                        self.alternative_labels[split_dollar[0]] = (
+                            split_dollar[1].removeprefix("LABEL=").strip()
+                        )
+                    elif "$" in line:
+                        split_dollar = line[9:].split("$", 1)
+                        text = self._parse_potential_footnote(
+                            split_dollar[0], split_dollar[1], line, flag_com
+                        )
                     else:
-                        self.comments.append([line])
+                        if flag_com.lower() != "t":
+                            text = TextField(line[9:].strip())
+                        else:
+                            text = TextField(line[9:])
+                        self.formatted_general_comments.append((text, flag_com))
+
+                    self.comments.append([line])
+                    last_field = text
                 else:
                     if flag_rectype in "BAGEL" or (
                         flag_rectype in " D" and flag_particle in "PAN"
@@ -415,6 +446,16 @@ class Dataset:
                 # TODO: Maybe wrong linebreak?
                 pass
 
+        for key, val in self.field_footnotes.items():
+            self.field_footnotes[key] = str(val)
+        for key, val in self.specific_footnotes.items():
+            self.specific_footnotes[key] = (val[0], str(val[1]))
+        for i in range(0, len(self.formatted_general_comments)):
+            self.formatted_general_comments[i] = (
+                str(self.formatted_general_comments[i][0]),
+                self.formatted_general_comments[i][1],
+            )
+
     def add_jpi(self, level: LevelRecord) -> int | None:
         for ang_mom in level.ang_mom:
             self.jpi_index.setdefault((ang_mom.val, ang_mom.parity), []).append(level)
@@ -424,6 +465,63 @@ class Dataset:
 
     def __repr__(self):
         return f"<{self.__class__.__name__}: {self.nucid} ({self.dataset_id})>"
+
+    def _parse_potential_footnote(
+        self, lhs: str, rhs: str, line: str, flag_com: str
+    ) -> TextField:
+        # Work out if it's just a really short comment
+        if rhs.strip() == "":
+            if flag_com.lower() != "t":
+                text = TextField(line[9:].strip())
+            else:
+                text = TextField(line[9:])
+            self.formatted_general_comments.append((text, flag_com))
+
+        # Bracket indicates a footnote between the brackets - try to extract.
+        # Note that multiple letters correspond to individual footnotes with
+        # the same text that applies to different field combinations
+        elif "(" in lhs:
+            match = re.findall(r"([A-Z]+)\(([A-Za-z0-9,\s]+)\)", lhs)
+            if match is not None:
+                fields = [x[0] for x in match]
+                footnote_label_combinations = [x[1] for x in match]
+                text = TextField(rhs.strip())
+                for field, labels in zip(
+                    fields, footnote_label_combinations, strict=False
+                ):
+                    for label in labels:
+                        if label in self.specific_footnotes:
+                            self.specific_footnotes[label] = (
+                                self.specific_footnotes[label][0] + [field],
+                                text,
+                            )
+                        else:
+                            self.specific_footnotes[label] = ([field], text)
+            else:
+                raise ValueError(f"Cannot match footnotes {lhs[0]}")
+
+        # Now check if there are commas in the lhs or not - indicates a field footnote
+        elif "," in lhs:
+            fields = lhs.split(",")
+            text = TextField(rhs.strip())
+            for field in fields[:-1]:
+                self.field_footnotes[field] = TextField(rhs.strip())
+            self.field_footnotes[fields[-1]] = text
+
+        # Now check if it's just a single field footnote - i.e. a single letter
+        elif len(lhs.strip()) == 1:
+            text = TextField(rhs.strip())
+            self.field_footnotes[lhs.strip()] = text
+
+        # Just a regular comment that happened to have a blank in just the right place
+        else:
+            if flag_com.lower() != "t":
+                text = TextField(line[9:].strip())
+            else:
+                text = TextField(line[9:])
+            self.formatted_general_comments.append((text, flag_com))
+
+        return text
 
 
 class BaseRecord:
@@ -1191,6 +1289,24 @@ class AngularMoment:
                 return abs(self.val - float(other[0])) < 0.1
             return self.ang_mom == other[0]
         return NotImplemented
+
+
+class TextField:
+    """A mutable box for a string that may be built across multiple lines"""
+
+    __slots__ = ("lines",)
+
+    def __init__(self, first_line: str) -> None:
+        self.lines = [first_line]
+
+    def append(self, line: str) -> None:
+        self.lines.append(line)
+
+    def __str__(self) -> str:
+        return " ".join(self.lines)
+
+    def __repr__(self) -> str:
+        return f"TextField({str(self)!r})"
 
 
 def get_active_ensdf(version: str = "latest") -> ENSDF:
