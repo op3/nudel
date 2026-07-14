@@ -362,6 +362,11 @@ class Dataset:
                         text = self._parse_potential_footnote(
                             split_dollar[0], split_dollar[1], line, flag_com
                         )
+                    elif line[18] == " " and line[19] != " ":
+                        split_space = [line[9:19], line[19:]]
+                        text = self._parse_potential_footnote(
+                            split_space[0], split_space[1], line, flag_com
+                        )
                     else:
                         if flag_com.lower() != "t":
                             text = TextField(line[9:].strip())
@@ -822,6 +827,10 @@ class LevelRecord(Record):
                 s.calculated = True
 
         self.index = self.dataset.add_jpi(self)
+
+        self.footnote_flags = list(self.prop["C"])
+        if "FLAG" in self.prop:
+            self.footnote_flags += list(self.prop["FLAG"])
 
     def add_decay(self, decay):
         self.decays.append(decay)
