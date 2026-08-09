@@ -24,8 +24,11 @@ first run, reusing the cache thereafter — same mechanism as the rest of
 the test suite and CI) and feeds every indexed dataset through the real
 ``nudel.core.Dataset`` parser. It does not assert on the *contents* of any
 individual dataset; it only verifies that the parser does not blow up on
-real-world data at scale. A small failure budget is tolerated so that
-known minor parser bugs (tracked in TODO.md) do not mask regressions.
+real-world data at scale.
+
+A failure of *any* dataset fails the test — there is no failure budget.
+If the data cannot be obtained (no network and no cached copy) the test
+is skipped (yellow ``s``), never reported as green.
 """
 
 from __future__ import annotations
@@ -35,12 +38,6 @@ import warnings
 import pytest
 from nudel import fetch
 from nudel.core import ENSDF
-
-# Fraction of datasets that must parse cleanly. Kept generous to tolerate
-# the handful of known parser bugs (e.g. ``AngularMoment.__repr__`` with
-# ``div is None``, the ``add_jpi`` indentation bug) without masking new
-# regressions. Bump it down as those bugs get fixed.
-MIN_SUCCESS_RATE = 0.95
 
 
 @pytest.fixture(scope="module")
@@ -67,9 +64,8 @@ def ensdf_latest():
 def test_parse_all_datasets_smoke(ensdf_latest):
     """Every indexed dataset in the latest ENSDF release must parse.
 
-    Collects per-dataset failures and asserts the overall success rate is
-    at least :data:`MIN_SUCCESS_RATE`. Failure details are surfaced via the
-    assertion message so regressions are immediately diagnosable.
+    A failure of *any* dataset fails the test. Failure details are surfaced
+    via the assertion message so regressions are immediately diagnosable.
     """
     total = 0
     failures: list[str] = []
@@ -85,18 +81,7 @@ def test_parse_all_datasets_smoke(ensdf_latest):
             except Exception as exc:  # noqa: BLE001 - smoke test: any failure
                 failures.append(f"{nucleus} {name!r}: {type(exc).__name__}: {exc}")
 
-    success = total - len(failures)
-    rate = success / total if total else 0.0
-    summary = (
-        f"parsed {success}/{total} datasets ({rate:.2%}); {len(failures)} failures"
+    assert total > 0, "ENSDF index contained no datasets"
+    assert not failures, (
+        f"{len(failures)}/{total} datasets failed to parse:\n" + "\n".join(failures)
     )
-    assert rate >= MIN_SUCCESS_RATE, (
-        summary
-        + "\n"
-        + "\n".join(failures[:50])
-        + ("\n..." if len(failures) > 50 else "")
-    )
-    assert total > 0
-    # Surface the summary even on success (truncated) for visibility in CI logs.
-    if failures:
-        print(f"\n[smoke] {summary}\n" + "\n".join(failures[:20]))
