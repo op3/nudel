@@ -19,8 +19,8 @@
 
 """Add repository root to python path"""
 
-import sys
 import os
+import sys
 
 module_path = os.path.abspath(os.path.join(os.pardir, os.pardir))
 if module_path not in sys.path:
