@@ -24,7 +24,6 @@ import warnings
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
 
 from .provider import ENSDFFileProvider, ENSDFProvider
 from .util import ELEMENTS, Quantity, az_from_nucid, nucid_from_az
@@ -33,13 +32,20 @@ from .util import ELEMENTS, Quantity, az_from_nucid, nucid_from_az
 class ENSDF:
     active_ensdf = None
 
-    def __init__(self, provider: Optional["ENSDFProvider"] = None):
+    def __init__(
+        self,
+        provider: "ENSDFProvider | None" = None,
+        *,
+        version: str = "latest",
+    ):
         """Create ENSDF instance
 
         Args:
             provider: provider for ENSDF database
+            version: ENSDF version (``"latest"`` or ``YYMMDD``). Ignored
+                when ``provider`` is given.
         """
-        self.provider = provider or ENSDFFileProvider()
+        self.provider = provider or ENSDFFileProvider(version=version)
         self.datasets = dict.fromkeys(self.provider.index)
         self._old_active = None
 
@@ -749,10 +755,17 @@ def get_record_type(record):
 
 
 class Nuclide:
-    def __init__(self, mass: int, protons: int):
+    def __init__(
+        self,
+        mass: int,
+        protons: int,
+        *,
+        ensdf: "ENSDF | None" = None,
+        version: str = "latest",
+    ):
         self.mass = mass
         self.protons = protons
-        self.ensdf = get_active_ensdf()
+        self.ensdf = ensdf if ensdf is not None else get_active_ensdf(version=version)
         self.adopted_levels = self.ensdf.get_adopted_levels((mass, protons))
 
     def get_isomers(self) -> Iterator["LevelRecord"]:
@@ -893,7 +906,7 @@ class AngularMoment:
             return self.ang_mom == other[0]
 
 
-def get_active_ensdf():
-    if not ENSDF.active_ensdf:
-        ENSDF.active_ensdf = ENSDF()
+def get_active_ensdf(version: str = "latest") -> "ENSDF":
+    if ENSDF.active_ensdf is None:
+        ENSDF.active_ensdf = ENSDF(version=version)
     return ENSDF.active_ensdf
