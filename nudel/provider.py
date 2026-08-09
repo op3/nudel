@@ -19,29 +19,26 @@
 
 """Wrapper for ENSDF providers"""
 
-
-from pathlib import Path
-import os
-from os.path import getmtime
-from abc import ABC, abstractmethod
-import re
-import pickle
 import lzma
-from typing import Union, List, Tuple, Optional
+import os
+import pickle
+from abc import ABC, abstractmethod
+from os.path import getmtime
+from pathlib import Path
 
-from .util import nucid_from_az, az_from_nucid, Quantity
+from .util import az_from_nucid
 
 
 class ENSDFProvider(ABC):
     @abstractmethod
-    def get_dataset(self, nucleus: Tuple[int, Optional[int]], name: str) -> str:
+    def get_dataset(self, nucleus: tuple[int, int | None], name: str) -> str:
         """
         returns a raw ENSDF dataset
         """
         pass
 
     @abstractmethod
-    def get_adopted_levels(self, nucleus: Tuple[int, int]) -> str:
+    def get_adopted_levels(self, nucleus: tuple[int, int]) -> str:
         """
         returns the raw ADOPTED LEVELS[, GAMMAS] dataset of a nucleus
         """
@@ -49,7 +46,7 @@ class ENSDFProvider(ABC):
 
 
 class ENSDFFileProvider(ENSDFProvider):
-    def __init__(self, folder: Union[str, Path] = None) -> None:
+    def __init__(self, folder: str | Path = None) -> None:
         if not folder:
             folder = os.getenv(
                 "ENSDF_PATH",
@@ -66,7 +63,7 @@ class ENSDFFileProvider(ENSDFProvider):
         self.index = dict()
         self.gen_index()
         self.adopted_levels = dict()
-        for nucleus, name in self.index.keys():
+        for nucleus, name in self.index:
             if "ADOPTED LEVELS" in name:
                 self.adopted_levels[nucleus] = name
 
@@ -83,7 +80,7 @@ class ENSDFFileProvider(ENSDFProvider):
                 return
 
         for f_path in ensdf_files:
-            with open(f_path, "r") as f:
+            with open(f_path) as f:
                 linestart = f.tell()
                 line = f.readline()
                 while line:
@@ -96,15 +93,15 @@ class ENSDFFileProvider(ENSDFProvider):
             with lzma.open(index_file, "wb") as index:
                 pickle.dump(self.index, index, protocol=pickle.HIGHEST_PROTOCOL)
 
-    def get_dataset(self, nucleus: Tuple[int, Optional[int]], name: str) -> str:
+    def get_dataset(self, nucleus: tuple[int, int | None], name: str) -> str:
         mass, Z = nucleus
         res = ""
-        with open(self.folder / f"ensdf.{mass:03d}", "r") as f:
+        with open(self.folder / f"ensdf.{mass:03d}") as f:
             f.seek(self.index[nucleus, name])
             for line in f:
                 if line.strip() == "":
                     return res
                 res += line
 
-    def get_adopted_levels(self, nucleus: Tuple[int, int]) -> str:
+    def get_adopted_levels(self, nucleus: tuple[int, int]) -> str:
         return self.get_dataset(nucleus, self.adopted_levels[nucleus])

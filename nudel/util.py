@@ -21,13 +21,12 @@
 
 import copy
 import enum
-import re
 import math
-from math import isnan
+import re
 import warnings
-from typing import Tuple, Optional, NamedTuple, Union
-from functools import lru_cache
-
+from functools import cache
+from math import isnan
+from typing import NamedTuple
 
 ELEMENTS = [
     "Nn",
@@ -336,7 +335,7 @@ ALT_CHARS2 = {
 }
 
 
-def az_from_nucid(nucid: str) -> Tuple[int, int | None]:
+def az_from_nucid(nucid: str) -> tuple[int, int | None]:
     mass, nucleus = re.compile(r"(\d+)([A-Za-z]*)?").search(nucid).groups()
     if len(mass) > 3:
         return int(nucid[:3]), int(nucid[3:]) + 100
@@ -345,10 +344,11 @@ def az_from_nucid(nucid: str) -> Tuple[int, int | None]:
     except IndexError:
         return int(nucid), None
 
+
 def nucid_from_az(nucleus):
     mass, Z = nucleus
     try:
-        if Z >= len(ELEMENTS) and 100 <= Z < 200:
+        if len(ELEMENTS) <= Z and 100 <= Z < 200:
             name = f"{1:02d}"[-2:]
         else:
             name = ELEMENTS[Z].upper()
@@ -368,7 +368,7 @@ class Unit(NamedTuple):
     symb: str
     dimension: Dimension
     basis: float
-    ensdf_symb: Optional[str]
+    ensdf_symb: str | None
 
 
 Units = [
@@ -464,7 +464,7 @@ class Quantity:
         re.X,
     )
 
-    def __init__(self, val: Optional[str] = None, default_unit: Optional[str] = None):
+    def __init__(self, val: str | None = None, default_unit: str | None = None):
         """Initialize from an ENSDF quantity.
 
         If a separate uncertainty is given in a D* field, simply
@@ -500,7 +500,7 @@ class Quantity:
         if not self.unit and default_unit:
             self.set_unit(default_unit)
 
-    def _parse_input(self, val: Optional[str] = None):
+    def _parse_input(self, val: str | None = None):
         if val is not None:
             val = val.replace("|?", "?").replace("|@", "∞").strip()
         else:
@@ -527,7 +527,7 @@ class Quantity:
 
         res = self.pattern.match(val.strip())
         if not res:
-            warnings.warn(f"Quantity ranges not yet supported.")
+            warnings.warn("Quantity ranges not yet supported.", stacklevel=2)
             # FIXME: Ranges (e.g. 'a-b' or 'LT a GT b') not yet implemented
             # or input is malformed (raise ValueError).
             # print(f"Could not parse: {val}")
@@ -659,7 +659,7 @@ class Quantity:
         res = cls.nubase_pattern.match(val.strip())
         if not res:
             qty.nubase_quantities.append(val)
-            warnings.warn(f"Error while parsing NUBASE quantity.")
+            warnings.warn("Error while parsing NUBASE quantity.", stacklevel=2)
             return qty
         frags = res.groupdict()
         qty.comment = frags["comment"]
@@ -688,7 +688,7 @@ class Quantity:
     def set_unit(self, unit_symbol: str):
         self.unit = get_unit(unit_symbol)
 
-    def cast_to_unit(self, unit: Union[str, Unit]):
+    def cast_to_unit(self, unit: str | Unit):
         """Cast quantity in a different unit
 
         Args:
@@ -829,7 +829,7 @@ def alt_char_float(val):
     return val.replace("|?", "?").replace("|@", "∞").replace("INFNT", "∞").strip()
 
 
-@lru_cache(maxsize=None)
+@cache
 def get_unit(unit_symbol: str):
     """Get Unit object by according symbol (ensdf or standard form)
 

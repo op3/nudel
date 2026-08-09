@@ -19,11 +19,10 @@
 
 """Tests for nudel.util.Quantity"""
 
-from math import isnan, isclose
+from math import isclose, isnan
+
 import pytest
-
-from nudel.util import Quantity, Limit, Dimension, Sign, get_unit
-
+from nudel.util import Quantity, Sign, get_unit
 
 QUANTITY_DEFAULT = {
     "val": float("nan"),
@@ -55,7 +54,7 @@ def cmp_nan_safe(a, b):
     try:
         if isnan(a):
             return isnan(b)
-    except:
+    except Exception:
         pass
     return a == b
 
@@ -1031,10 +1030,10 @@ def test_quantity_cmp():
     assert q0 != q1
 
     assert q0 < 1.0
-    assert 0.0 <= q0
+    assert q0 >= 0.0
     assert q0 <= 1.0
     assert q1 >= 0.0
-    assert 1.0 >= q0
+    assert q0 <= 1.0
     assert q0 >= 0.0
     assert q0 == 0.0
     assert q0 != 1.0

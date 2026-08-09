@@ -19,14 +19,15 @@
 
 """Python interface for ENSDF nuclear data"""
 
-from datetime import datetime
 import re
-from dataclasses import dataclass
-from typing import Iterator, List, Optional, Tuple, Union
 import warnings
+from collections.abc import Iterator
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional
 
-from .provider import ENSDFProvider, ENSDFFileProvider
-from .util import nucid_from_az, az_from_nucid, Quantity, ELEMENTS
+from .provider import ENSDFFileProvider, ENSDFProvider
+from .util import ELEMENTS, Quantity, az_from_nucid, nucid_from_az
 
 
 class ENSDF:
@@ -42,7 +43,7 @@ class ENSDF:
         self.datasets = dict.fromkeys(self.provider.index)
         self._old_active = None
 
-    def get_dataset(self, nuclide: Tuple[int, Optional[int]], name: str) -> "Dataset":
+    def get_dataset(self, nuclide: tuple[int, int | None], name: str) -> "Dataset":
         """Returns specified dataset.
 
         Args:
@@ -61,7 +62,7 @@ class ENSDF:
             self.datasets[(nuclide, name)] = Dataset(res)
         return self.datasets[(nuclide, name)]
 
-    def get_adopted_levels(self, nuclide: Tuple[int, int]) -> "Dataset":
+    def get_adopted_levels(self, nuclide: tuple[int, int]) -> "Dataset":
         """Get adopted levels dataset of a nuclide
 
         Args:
@@ -71,12 +72,12 @@ class ENSDF:
             Dataset "ADOPTED LEVELS[…]" of given nuclide
         """
         # TODO: activate cache
-        if (nuclide, "ADOPTED LEVELS") not in self.datasets or True:
+        if (nuclide, "ADOPTED LEVELS") not in self.datasets or True:  # noqa: SIM222
             res = Dataset(self.provider.get_adopted_levels(nuclide))
             self.datasets[(nuclide, "ADOPTED LEVELS")] = res
         return self.datasets[(nuclide, "ADOPTED LEVELS")]
 
-    def get_datasets_by_nuclide(self, nuclide: Tuple[int, Optional[int]]) -> List[str]:
+    def get_datasets_by_nuclide(self, nuclide: tuple[int, int | None]) -> list[str]:
         """Get names of all datasets of a nuclide
 
         Args:
@@ -87,12 +88,12 @@ class ENSDF:
             List of dataset identifier names for given nuclide
         """
         res = []
-        for dnuclide, name in self.datasets.keys():
+        for dnuclide, name in self.datasets:
             if dnuclide == nuclide:
                 res.append(name)
         return res
 
-    def get_indexed_nuclides(self) -> List[Tuple[int, int]]:
+    def get_indexed_nuclides(self) -> list[tuple[int, int]]:
         """Get all nuclides with corresponding adopted levels datasets.
 
         Returns:
@@ -215,7 +216,7 @@ class Dataset:
                         comments.append([line])
                 else:
                     # This is a broken record!
-                    warnings.warn("Record is malformed, parsing anyway.")
+                    warnings.warn("Record is malformed, parsing anyway.", stacklevel=2)
                     record.append(line)
             except (IndexError, ValueError):
                 print(record)
@@ -348,7 +349,11 @@ class QValueRecord(BaseRecord):
         self.alpha_decay = Quantity(self.prop["A"])
 
     def __repr__(self):
-        return f"<{self.__class__.__name__}: Q-={self.q_beta_minus}, N={self.neutron_separation}, P={self.proton_separation}, A={self.alpha_decay}>"
+        return (
+            f"<{self.__class__.__name__}: Q-={self.q_beta_minus},"
+            f" N={self.neutron_separation}, P={self.proton_separation},"
+            f" A={self.alpha_decay}>"
+        )
 
 
 class CrossReferenceRecord(BaseRecord):
@@ -456,7 +461,7 @@ class LevelRecord(Record):
         self.half_life = Quantity(self.prop["T"])
         self.questionable = self.prop["Q"] == "?"
         self.expected = self.prop["Q"] == "S"
-        self.g_factor = Quantity(self.prop["G"] if "G" in self.prop else "")
+        self.g_factor = Quantity(self.prop.get("G", ""))
         self.metastable = self.prop["MS"] and self.prop["MS"][0] == "M"
 
         self.decay_ratio = dict()
@@ -475,7 +480,7 @@ class LevelRecord(Record):
         ):
             spec_strength_calc = True
             self.prop["S"] = self.prop["S"][1:-1]
-        if not "E+" in self.prop["S"] and "+" in self.prop["S"]:
+        if "E+" not in self.prop["S"] and "+" in self.prop["S"]:
             spec_strength = self.prop["S"].split("+")
         elif "," in self.prop["S"]:
             spec_strength = self.prop["S"].split(",")
@@ -682,9 +687,9 @@ class GammaRecord(DecayRecord):
         try:
             self.dest_level = min(
                 [
-                    l
-                    for l in self.dataset.levels
-                    if l.energy.offset == self.energy.offset
+                    lvl
+                    for lvl in self.dataset.levels
+                    if lvl.energy.offset == self.energy.offset
                 ],
                 key=lambda x: abs(x.energy.val - dest_energy),
             )
@@ -761,9 +766,9 @@ class Nuclide:
                 if level.metastable:
                     yield level
 
-    def get_daughters(self) -> List[Tuple[Tuple[int, int], str]]:
+    def get_daughters(self) -> list[tuple[tuple[int, int], str]]:
         nucid = nucid_from_az((self.mass, self.protons)).strip()
-        for nucid_i, name_i in self.ensdf.datasets.keys():
+        for nucid_i, name_i in self.ensdf.datasets:
             if name_i.startswith(nucid) and "DECAY" in name_i:
                 yield (nucid_i, name_i)
 
@@ -820,7 +825,7 @@ def rec_bracket_parser(s, i=0):
     return i, res
 
 
-def ang_mom_parser(ang_mom: str) -> List[Tuple[str, Optional[str]]]:
+def ang_mom_parser(ang_mom: str) -> list[tuple[str, str | None]]:
     """
     Parse simple angular momement definitions such as 5/2+ or 4,5,6(-).
     More advanced definitions (silently) result in garbage.
@@ -853,7 +858,7 @@ def ang_mom_range_to_tuple(ang_mom):
         stop, _ = ang_mom_to_tuple(stop)
         for i in range(start, stop + div, div):
             yield (i, div)
-    except:
+    except Exception:
         yield ang_mom
 
 
@@ -863,16 +868,13 @@ class AngularMoment:
         try:
             self.ang_mom, self.div = ang_mom
             self.val = self.ang_mom / self.div
-        except:
+        except Exception:
             self.ang_mom = ang_mom
             self.val = None
         self.parity = parity
 
     def __repr__(self):
-        if self.div != 1:
-            J = f"{self.ang_mom}/{self.div}"
-        else:
-            J = f"{self.ang_mom}"
+        J = f"{self.ang_mom}/{self.div}" if self.div != 1 else f"{self.ang_mom}"
         if self.parity:
             return f"{J}{self.parity}"
         return J
