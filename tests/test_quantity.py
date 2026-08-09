@@ -979,6 +979,26 @@ def cmp_nan_safe(a, b):
             },
             "≤ 45(15)",
         ],
+        [
+            "~50 AP",
+            {"val": 50.0, "approximate": True},
+            "~ 50",
+        ],
+        [
+            "~50",
+            {"val": 50.0, "approximate": True},
+            "~ 50",
+        ],
+        [
+            "~100.0 KEV",
+            {
+                "val": 100.0,
+                "decimals": 1,
+                "approximate": True,
+                "unit": get_unit("keV"),
+            },
+            "~ 100.0 keV",
+        ],
     ],
 )
 def test_quantity(quantity, mod_dict, printed):
