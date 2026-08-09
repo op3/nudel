@@ -326,3 +326,32 @@ def test_get_dataset_does_not_reparse_on_cache_hit(ensdf):
         ensdf.get_dataset(NUCLEUS, "ADOPTED LEVELS, GAMMAS")
         ensdf.get_dataset(NUCLEUS, "ADOPTED LEVELS, GAMMAS")
     assert spy.call_count == 1
+
+
+def test_percent_branching_without_equals_routed_to_decay_ratio():
+    nucid = "  1H "
+    dsid = "ADOPTED LEVELS"
+    dataset = (
+        f"{nucid}    {dsid}"
+        + " " * (39 - len(dsid))
+        + " " * 26
+        + "202601\n"
+        + f"{nucid}  H TYP=FUL$AUT=Test$DAT=2026$".ljust(80)
+        + "\n"
+        + f"{nucid}  L       0.0     1/2+".ljust(80)
+        + "\n"
+        + f"{nucid}1   %A 50$%EC 50".ljust(80)
+        + "\n"
+    )
+    prov = ENSDFInMemoryProvider({((1, 1), dsid): dataset})
+    ensdf = ENSDF(provider=prov)
+    ENSDF.active_ensdf = ensdf
+    try:
+        ds = ensdf.get_dataset((1, 1), dsid)
+        assert "A" in ds.levels[0].decay_ratio
+        assert "EC" in ds.levels[0].decay_ratio
+        assert ds.levels[0].decay_ratio["A"].val == 50.0
+        assert ds.levels[0].decay_ratio["EC"].val == 50.0
+        assert "A" not in ds.levels[0].prop or ds.levels[0].prop.get("A") != "50 AP"
+    finally:
+        ENSDF.active_ensdf = None

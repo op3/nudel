@@ -448,7 +448,7 @@ class Record(BaseRecord):
         if entry.startswith("%"):
             m = re.match(r"([A-Z]+)(.*)", entry[1:])
             if m:
-                self.prop[m.group(1)] = f"{m.group(2).strip()} AP"
+                self.prop["%" + m.group(1)] = f"{m.group(2).strip()} AP"
                 return
         for symb in ["|?", "?"]:
             if symb in entry:
