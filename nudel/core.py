@@ -898,7 +898,10 @@ class AngularMoment:
         self.parity = parity
 
     def __repr__(self):
-        J = f"{self.ang_mom}/{self.div}" if self.div != 1 else f"{self.ang_mom}"
+        if self.div is not None and self.div != 1:
+            J = f"{self.ang_mom}/{self.div}"
+        else:
+            J = f"{self.ang_mom}"
         if self.parity:
             return f"{J}{self.parity}"
         return J
