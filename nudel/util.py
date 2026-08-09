@@ -525,7 +525,12 @@ class Quantity:
             self.questionable = True
             val = val.replace("?", "")
 
-        res = self.pattern.match(val.strip())
+        val = val.strip()
+        if val.startswith("~"):
+            self.approximate = True
+            val = val[1:].strip()
+
+        res = self.pattern.match(val)
         if not res:
             warnings.warn("Quantity ranges not yet supported.", stacklevel=2)
             # FIXME: Ranges (e.g. 'a-b' or 'LT a GT b') not yet implemented
