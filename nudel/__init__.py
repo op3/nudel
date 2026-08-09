@@ -21,6 +21,7 @@
 
 __version__ = "0.0.1"
 
-from .core import Nuclide, get_active_ensdf
+from .core import Nuclide as Nuclide
+from .core import get_active_ensdf
 
 ensdf = get_active_ensdf()
