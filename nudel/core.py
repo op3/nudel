@@ -905,10 +905,54 @@ def ang_mom_parser(ang_mom: str) -> "list[AngularMoment]":
     Parse simple angular momement definitions such as 5/2+ or 4,5,6(-).
     More advanced definitions (silently) result in garbage.
     """
+    if _is_simple_range(ang_mom):
+        return _parse_simple_range(ang_mom)
     res = []
     for fragment, parity in rec_bracket_parser(ang_mom)[1]:
         for J in ang_mom_range_to_tuple(fragment):
             res.append(AngularMoment(J, parity))
+    return res
+
+
+def _is_simple_range(s: str) -> bool:
+    if not any(sep in s for sep in (" to ", " TO ", ":")):
+        return False
+    return not any(c in s for c in "(),[]&")
+
+
+def _parse_simple_range(s: str) -> "list[AngularMoment]":
+    if " to " in s:
+        start_str, stop_str = s.split(" to ", 1)
+    elif " TO " in s:
+        start_str, stop_str = s.split(" TO ", 1)
+    elif ":" in s:
+        start_str, stop_str = s.split(":", 1)
+    else:
+        return []
+    start_parity = None
+    if start_str and start_str[-1] in "+-":
+        start_parity = start_str[-1]
+        start_str = start_str[:-1]
+    stop_parity = None
+    if stop_str and stop_str[-1] in "+-":
+        stop_parity = stop_str[-1]
+        stop_str = stop_str[:-1]
+    try:
+        pairs = list(ang_mom_range_to_tuple(f"{start_str} to {stop_str}"))
+    except (TypeError, ValueError):
+        pairs = []
+    if not pairs or not isinstance(pairs[0], tuple):
+        return [AngularMoment(s, None)]
+    res = []
+    last = len(pairs) - 1
+    for idx, J in enumerate(pairs):
+        if idx == 0:
+            parity = start_parity
+        elif idx == last:
+            parity = stop_parity
+        else:
+            parity = None
+        res.append(AngularMoment(J, parity))
     return res
 
 

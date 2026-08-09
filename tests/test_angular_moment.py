@@ -20,7 +20,12 @@
 """Tests for ``nudel.core.AngularMoment`` ``__repr__`` and ``__eq__``."""
 
 import pytest
-from nudel.core import AngularMoment, ang_mom_parser, ang_mom_range_to_tuple
+from nudel.core import (
+    AngularMoment,
+    _parse_simple_range,
+    ang_mom_parser,
+    ang_mom_range_to_tuple,
+)
 
 
 @pytest.mark.parametrize(
@@ -95,9 +100,9 @@ def test_ang_mom_range_lowercase_to():
 
 def test_ang_mom_range_lowercase_to_with_parity_via_parser():
     assert [(a.val, a.parity) for a in ang_mom_parser("3 to 6-")] == [
-        (3.0, "-"),
-        (4.0, "-"),
-        (5.0, "-"),
+        (3.0, None),
+        (4.0, None),
+        (5.0, None),
         (6.0, "-"),
     ]
 
@@ -105,21 +110,85 @@ def test_ang_mom_range_lowercase_to_with_parity_via_parser():
 def test_ang_mom_range_lowercase_to_plus_endpoints():
     assert [(a.val, a.parity) for a in ang_mom_parser("2+ to 6+")] == [
         (2.0, "+"),
-        (3.0, "+"),
-        (4.0, "+"),
-        (5.0, "+"),
+        (3.0, None),
+        (4.0, None),
+        (5.0, None),
         (6.0, "+"),
     ]
 
 
 def test_ang_mom_range_uppercase_TO_still_works():
     assert [(a.val, a.parity) for a in ang_mom_parser("3 TO 6-")] == [
-        (3.0, "-"),
-        (4.0, "-"),
-        (5.0, "-"),
+        (3.0, None),
+        (4.0, None),
+        (5.0, None),
         (6.0, "-"),
     ]
 
 
 def test_ang_mom_range_colon_still_works():
     assert list(ang_mom_range_to_tuple("3:6")) == [(3, 1), (4, 1), (5, 1), (6, 1)]
+
+
+def test_ang_mom_range_manual_a_stop_parity_only():
+    assert [(a.val, a.parity) for a in ang_mom_parser("3 to 6-")] == [
+        (3.0, None),
+        (4.0, None),
+        (5.0, None),
+        (6.0, "-"),
+    ]
+
+
+def test_ang_mom_range_manual_b_mixed_parity():
+    assert [(a.val, a.parity) for a in ang_mom_parser("3+ to 6-")] == [
+        (3.0, "+"),
+        (4.0, None),
+        (5.0, None),
+        (6.0, "-"),
+    ]
+
+
+def test_ang_mom_range_manual_c_start_parity_only():
+    assert [(a.val, a.parity) for a in ang_mom_parser("3+ to 6")] == [
+        (3.0, "+"),
+        (4.0, None),
+        (5.0, None),
+        (6.0, None),
+    ]
+
+
+def test_ang_mom_range_manual_b_uppercase_TO():
+    assert [(a.val, a.parity) for a in ang_mom_parser("3+ TO 6-")] == [
+        (3.0, "+"),
+        (4.0, None),
+        (5.0, None),
+        (6.0, "-"),
+    ]
+
+
+def test_ang_mom_range_manual_c_uppercase_TO():
+    assert [(a.val, a.parity) for a in ang_mom_parser("3+ TO 6")] == [
+        (3.0, "+"),
+        (4.0, None),
+        (5.0, None),
+        (6.0, None),
+    ]
+
+
+def test_ang_mom_range_colon_mixed_parity():
+    assert [(a.val, a.parity) for a in ang_mom_parser("3+:6-")] == [
+        (3.0, "+"),
+        (4.0, None),
+        (5.0, None),
+        (6.0, "-"),
+    ]
+
+
+def test_parse_simple_range_helper_b():
+    res = _parse_simple_range("3+ to 6-")
+    assert [(a.val, a.parity) for a in res] == [
+        (3.0, "+"),
+        (4.0, None),
+        (5.0, None),
+        (6.0, "-"),
+    ]
