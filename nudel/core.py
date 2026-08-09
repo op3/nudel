@@ -266,7 +266,7 @@ class BaseRecord:
 
 
 class Record(BaseRecord):
-    def __init__(self, dataset, record, comments: list, xref: list):
+    def __init__(self, dataset, record, comments: list | None, xref: list | None):
         self.prop = dict()
         self.record = record
         self.dataset = dataset
@@ -279,6 +279,8 @@ class Record(BaseRecord):
 
     def parse_xref(self):
         self.xref = {}
+        if not self._xref:
+            return
         for xref in self._xref:
             refs = re.search(r".*XREF=([^\$]*)(\$(.*))?", xref.strip())
             if refs is None:
@@ -766,7 +768,7 @@ class Nuclide:
                 if level.metastable:
                     yield level
 
-    def get_daughters(self) -> list[tuple[tuple[int, int], str]]:
+    def get_daughters(self) -> Iterator[tuple[tuple[int, int], str]]:
         nucid = nucid_from_az((self.mass, self.protons)).strip()
         for nucid_i, name_i in self.ensdf.datasets:
             if name_i.startswith(nucid) and "DECAY" in name_i:
@@ -825,7 +827,7 @@ def rec_bracket_parser(s, i=0):
     return i, res
 
 
-def ang_mom_parser(ang_mom: str) -> list[tuple[str, str | None]]:
+def ang_mom_parser(ang_mom: str) -> "list[AngularMoment]":
     """
     Parse simple angular momement definitions such as 5/2+ or 4,5,6(-).
     More advanced definitions (silently) result in garbage.
