@@ -18,20 +18,54 @@ Especially cross-references and comments are not yet properly resolved.
 
 ### ENSDF
 
-To use nudel, a copy of the ENSDF is currently required.
-It can be obtained [here](https://www.nndc.bnl.gov/ensarchivals/).
-Extract the archive to `$XDG_DATA_HOME/ensdf`.
-Usually, this path corresponds to `~/.local/share/ensdf`.
-You should end up with files such as `~/.local/share/ensdf/ensdf.208`, etc.
-Alternatively, you can set `$ENSDF_PATH` to point to a different directory for the data.
+ENSDF data is fetched automatically on first use. The first time you create a
+`Nuclide`, nudel downloads the latest ENSDF release from
+[NNDC](https://www.nndc.bnl.gov/ensdf/) to `~/.local/share/nudel/ensdf/` and
+extracts it. Subsequent uses work offline, reusing the cached data.
+
+```python
+from nudel import Nuclide
+
+molybdenum94 = Nuclide(94, 42)  # triggers one-time download on first run
+```
+
+The fetched version is *pinned* (sticky-latest): new ENSDF releases do not
+affect your scripts until you explicitly upgrade. To list available versions:
+
+```bash
+python -m nudel.fetch --list
+```
+
+To upgrade to the latest release:
+
+```bash
+python -m nudel.fetch --latest
+# or in Python:
+# Nuclide(94, 42, version="latest")
+```
+
+To use a specific ENSDF version (format `YYMMDD`):
+
+```python
+Nuclide(94, 42, version="260601")
+```
+
+#### Using a manual ENSDF installation
+
+If you already have ENSDF data on disk (e.g. on an HPC cluster or offline
+machine), set the `ENSDF_PATH` environment variable to the directory containing
+your `ensdf.???` files. nudel will use that directory and never download:
+
+```bash
+export ENSDF_PATH=/path/to/ensdf
+```
 
 ## Requirements
 
 - python>=3.10
-- pytest (*optional, only for unit tests*)
-- pytest-cov (*optional, only for unit tests*)
 
-No further libraries are required!
+Runtime dependencies (`platformdirs`, `pooch`) are installed automatically.
+For unit tests: `pytest`, `pytest-cov`.
 
 ## Usage
 

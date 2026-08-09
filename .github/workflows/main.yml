@@ -10,16 +10,14 @@ permissions:
   contents: read
 
 env:
-  ENSDF_VERSION: "250902"
-  ENSDF_DIST: "dist25"
-  ENSDF_PATH: "/tmp/ensdf"
+  ENSDF_VERSION: "260805"
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v9
+      - uses: astral-sh/setup-uv@v9.0.0
       - run: uv sync --extra dev --extra test
       - run: uv run ruff check nudel tests
       - run: uv run ruff format --check nudel tests
@@ -28,37 +26,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v9
+      - uses: astral-sh/setup-uv@v9.0.0
       - run: uv sync --extra dev --extra test
-      # pyrefly is informational-only: ~21 pre-existing typing errors remain
-      # from a pending typing refactor; do not block CI on them.
       - run: uv run pyrefly check nudel
-        continue-on-error: true
 
   test:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # 3.10 = support floor (requires-python>=3.10);
-        # 3.13 = current stable; 3.14 = latest as of Oct 2025.
-        python-version: ["3.10", "3.13", "3.14"]
+        python-version: ["3.13", "3.14"]
     env:
       UV_PYTHON: ${{ matrix.python-version }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9.0.0
       - name: Cache ENSDF data
         id: ensdf-cache
         uses: actions/cache@v4
         with:
-          path: ${{ env.ENSDF_PATH }}
+          path: ~/.local/share/nudel/ensdf
           key: ensdf-${{ env.ENSDF_VERSION }}
-      - name: Download ENSDF
+      - name: Fetch ENSDF data
         if: steps.ensdf-cache.outputs.cache-hit != 'true'
-        run: |
-          wget "https://www.nndc.bnl.gov/ensdfarchivals/distributions/${ENSDF_DIST}/ensdf_${ENSDF_VERSION}.zip"
-          mkdir -p "${ENSDF_PATH}"
-          unzip "ensdf_${ENSDF_VERSION}.zip" -d "${ENSDF_PATH}"
+        run: uv run python -m nudel.fetch --fetch ${{ env.ENSDF_VERSION }}
       - run: uv sync --extra test
       - run: uv run pytest
