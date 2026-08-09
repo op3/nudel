@@ -19,6 +19,7 @@
 
 """Python interface for ENSDF nuclear data"""
 
+import logging
 import re
 import warnings
 from collections.abc import Iterator
@@ -27,6 +28,8 @@ from datetime import datetime
 
 from .provider import ENSDFFileProvider, ENSDFProvider
 from .util import ELEMENTS, Quantity, az_from_nucid, nucid_from_az
+
+logger = logging.getLogger(__name__)
 
 
 class ENSDF:
@@ -227,7 +230,7 @@ class Dataset:
                     warnings.warn("Record is malformed, parsing anyway.", stacklevel=2)
                     record.append(line)
             except (IndexError, ValueError):
-                print(record)
+                logger.error("Failed to parse record: %r", record)
                 raise
 
             # if line[7].lower() in "bagel" and line[6].lower() not in "ct":
@@ -246,7 +249,7 @@ class Dataset:
                 else:
                     self._add_record(record, comments, xref, level)
         except (IndexError, ValueError):
-            print(record)
+            logger.error("Failed to parse record: %r", record)
             raise
 
         for entry in history.split("$")[:-1]:
