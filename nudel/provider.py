@@ -46,7 +46,7 @@ class ENSDFProvider(ABC):
 
 
 class ENSDFFileProvider(ENSDFProvider):
-    def __init__(self, folder: str | Path = None) -> None:
+    def __init__(self, folder: str | Path | None = None) -> None:
         if not folder:
             folder = os.getenv(
                 "ENSDF_PATH",
