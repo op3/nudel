@@ -217,7 +217,10 @@ class Dataset:
                     record.append(line)
                 elif flag_com.lower() in "cdt":
                     if flag_cont != " ":
-                        comments[-1].append(line)
+                        try:
+                            comments[-1].append(line)
+                        except IndexError:
+                            comments.append([line])
                     else:
                         comments.append([line])
                 else:
@@ -308,6 +311,11 @@ class Record(BaseRecord):
             quant, value = entry.split("=", maxsplit=1)
             self.prop[quant.strip()] = value.strip()
             return
+        if entry.startswith("%"):
+            m = re.match(r"([A-Z]+)(.*)", entry[1:])
+            if m:
+                self.prop[m.group(1)] = f"{m.group(2).strip()} AP"
+                return
         for symb in ["|?", "?"]:
             if symb in entry:
                 quant, value = entry.split(symb, maxsplit=1)
