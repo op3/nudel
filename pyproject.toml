@@ -2,13 +2,12 @@
 requires = ["setuptools >= 77.0.3"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools.dynamic]
-version = {attr = "nudel.__version__"}
-
 [project]
 name = "nudel"
-dynamic = ["version"]
+version = "0.0.1"
 requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+license-files = ["COPYING"]
 
 authors = [
   {name = "Oliver Papst", email = "opapst@ikp.tu-darmstadt.de"}
@@ -20,7 +19,6 @@ maintainers = [
 
 description = "Nuclear Data Extraction Library"
 readme = "README.md"
-license = "GPL-3.0-or-later"
 
 keywords = [
   "ensdf",
@@ -55,11 +53,20 @@ test = [
   "pytest",
   "pytest-cov"
 ]
+dev = [
+  "ruff",
+  "pyrefly"
+]
 
 [project.urls]
 Repository = "https://github.com/op3/nudel.git"
 "Bug Tracker" = "https://github.com/op3/nudel/issues"
 "Copying" = "https://github.com/op3/nudel/blob/master/COPYING"
+Documentation = "https://github.com/op3/nudel#readme"
+Changelog = "https://github.com/op3/nudel/releases"
+
+[tool.setuptools.package-data]
+nudel = ["py.typed"]
 
 [tool.pytest.ini_options]
 addopts = "--cov=nudel --verbose"
