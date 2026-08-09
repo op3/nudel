@@ -884,7 +884,7 @@ def ang_mom_range_to_tuple(ang_mom):
         stop, _ = ang_mom_to_tuple(stop)
         for i in range(start, stop + div, div):
             yield (i, div)
-    except Exception:
+    except (TypeError, ValueError):
         yield ang_mom
 
 
@@ -894,7 +894,7 @@ class AngularMoment:
         try:
             self.ang_mom, self.div = ang_mom
             self.val = self.ang_mom / self.div
-        except Exception:
+        except (TypeError, ValueError, ZeroDivisionError):
             self.ang_mom = ang_mom
             self.val = None
         self.parity = parity

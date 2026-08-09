@@ -20,7 +20,7 @@
 """Tests for ``nudel.core.AngularMoment`` ``__repr__`` and ``__eq__``."""
 
 import pytest
-from nudel.core import AngularMoment
+from nudel.core import AngularMoment, ang_mom_range_to_tuple
 
 
 @pytest.mark.parametrize(
@@ -44,3 +44,40 @@ def test_eq_div_tuple():
 
 def test_eq_plain_value_with_parity():
     assert AngularMoment(3, "+") == (3, "+")
+
+
+def test_angular_moment_non_tuple_fallback():
+    am = AngularMoment(3)
+    assert am.ang_mom == 3
+    assert am.div is None
+    assert am.val is None
+
+
+def test_angular_moment_wrong_length_tuple_fallback():
+    am = AngularMoment((1, 2, 3))
+    assert am.ang_mom == (1, 2, 3)
+    assert am.div is None
+    assert am.val is None
+
+
+def test_angular_moment_zero_division_fallback():
+    am = AngularMoment((3, 0))
+    assert am.ang_mom == (3, 0)
+    assert am.div == 0
+    assert am.val is None
+
+
+def test_ang_mom_range_non_string_fallback():
+    assert list(ang_mom_range_to_tuple(5)) == [5]
+
+
+def test_ang_mom_range_non_numeric_fallback():
+    assert list(ang_mom_range_to_tuple("abc")) == ["abc"]
+
+
+def test_ang_mom_range_valid():
+    assert list(ang_mom_range_to_tuple("3/2 TO 7/2")) == [
+        (3, 2),
+        (5, 2),
+        (7, 2),
+    ]
