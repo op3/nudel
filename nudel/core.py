@@ -922,8 +922,12 @@ def ang_mom_to_tuple(ang_mom):
 
 def ang_mom_range_to_tuple(ang_mom):
     try:
-        if " TO " in ang_mom:
-            start, stop = ang_mom.split(" TO ", 1)
+        if " to " in ang_mom or " TO " in ang_mom:
+            start, stop = (
+                ang_mom.split(" to ", 1)
+                if " to " in ang_mom
+                else ang_mom.split(" TO ", 1)
+            )
         elif ":" in ang_mom:
             start, stop = ang_mom.split(":", 1)
         else:

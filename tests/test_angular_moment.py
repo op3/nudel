@@ -20,7 +20,7 @@
 """Tests for ``nudel.core.AngularMoment`` ``__repr__`` and ``__eq__``."""
 
 import pytest
-from nudel.core import AngularMoment, ang_mom_range_to_tuple
+from nudel.core import AngularMoment, ang_mom_parser, ang_mom_range_to_tuple
 
 
 @pytest.mark.parametrize(
@@ -81,3 +81,45 @@ def test_ang_mom_range_valid():
         (5, 2),
         (7, 2),
     ]
+
+
+def test_ang_mom_range_lowercase_to():
+    assert list(ang_mom_range_to_tuple("2 to 6")) == [
+        (2, 1),
+        (3, 1),
+        (4, 1),
+        (5, 1),
+        (6, 1),
+    ]
+
+
+def test_ang_mom_range_lowercase_to_with_parity_via_parser():
+    assert [(a.val, a.parity) for a in ang_mom_parser("3 to 6-")] == [
+        (3.0, "-"),
+        (4.0, "-"),
+        (5.0, "-"),
+        (6.0, "-"),
+    ]
+
+
+def test_ang_mom_range_lowercase_to_plus_endpoints():
+    assert [(a.val, a.parity) for a in ang_mom_parser("2+ to 6+")] == [
+        (2.0, "+"),
+        (3.0, "+"),
+        (4.0, "+"),
+        (5.0, "+"),
+        (6.0, "+"),
+    ]
+
+
+def test_ang_mom_range_uppercase_TO_still_works():
+    assert [(a.val, a.parity) for a in ang_mom_parser("3 TO 6-")] == [
+        (3.0, "-"),
+        (4.0, "-"),
+        (5.0, "-"),
+        (6.0, "-"),
+    ]
+
+
+def test_ang_mom_range_colon_still_works():
+    assert list(ang_mom_range_to_tuple("3:6")) == [(3, 1), (4, 1), (5, 1), (6, 1)]
