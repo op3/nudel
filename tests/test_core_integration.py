@@ -181,6 +181,15 @@ def test_jpi_index_groups_same_parity(adopted):
     assert len(adopted.jpi_index[(1.5, "-")]) == 1
 
 
+def test_jpi_index_includes_all_ang_mom_for_multi_jpi_level(adopted):
+    lvl = adopted.levels[8]
+    assert (4.0, None) in adopted.jpi_index
+    assert (5.0, None) in adopted.jpi_index
+    assert (6.0, "-") in adopted.jpi_index
+    assert lvl in adopted.jpi_index[(4.0, None)]
+    assert lvl in adopted.jpi_index[(5.0, None)]
+
+
 def test_gamma_basic_fields(adopted):
     gs = adopted.levels[0]
     assert len(gs.decays) == 1

@@ -264,6 +264,7 @@ class Dataset:
                 self.jpi_index[(ang_mom.val, ang_mom.parity)].append(level)
             else:
                 self.jpi_index[(ang_mom.val, ang_mom.parity)] = [level]
+        if level.ang_mom:
             return len(self.jpi_index[(ang_mom.val, ang_mom.parity)])
 
     def __repr__(self):
