@@ -56,7 +56,8 @@ classifiers = [
 [project.optional-dependencies]
 test = [
   "pytest",
-  "pytest-cov"
+  "pytest-cov",
+  "pytest-randomly",
 ]
 dev = [
   "ruff",
@@ -74,7 +75,7 @@ Changelog = "https://github.com/op3/nudel/releases"
 nudel = ["py.typed"]
 
 [tool.pytest.ini_options]
-addopts = "--cov=nudel --verbose"
+addopts = "--cov=nudel --verbose --cov-fail-under=77"
 
 [tool.ruff]
 target-version = "py310"
