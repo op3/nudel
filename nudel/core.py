@@ -62,8 +62,7 @@ class ENSDF:
         """
         if (nuclide, name) not in self.datasets:
             raise KeyError("Dataset not found")
-        # TODO: activate cache
-        if self.datasets[(nuclide, name)] is None or True:
+        if self.datasets[(nuclide, name)] is None:
             res = self.provider.get_dataset(nuclide, name)
             self.datasets[(nuclide, name)] = Dataset(res)
         return self.datasets[(nuclide, name)]
@@ -77,11 +76,11 @@ class ENSDF:
         Returns:
             Dataset "ADOPTED LEVELS[…]" of given nuclide
         """
-        # TODO: activate cache
-        if (nuclide, "ADOPTED LEVELS") not in self.datasets or True:  # noqa: SIM222
+        name = self.provider.adopted_levels[nuclide]
+        if self.datasets[(nuclide, name)] is None:
             res = Dataset(self.provider.get_adopted_levels(nuclide))
-            self.datasets[(nuclide, "ADOPTED LEVELS")] = res
-        return self.datasets[(nuclide, "ADOPTED LEVELS")]
+            self.datasets[(nuclide, name)] = res
+        return self.datasets[(nuclide, name)]
 
     def get_datasets_by_nuclide(self, nuclide: tuple[int, int | None]) -> list[str]:
         """Get names of all datasets of a nuclide
