@@ -29,6 +29,8 @@ to end without touching the filesystem or network.
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 from nudel.core import ENSDF, BetaRecord, Dataset, GammaRecord, Nuclide
 from nudel.provider import ENSDFInMemoryProvider
@@ -303,3 +305,24 @@ def test_nuclide_get_isomers(ensdf):
 def test_get_datasets_by_nuclide(ensdf):
     names = ensdf.get_datasets_by_nuclide(NUCLEUS)
     assert set(names) == {"ADOPTED LEVELS, GAMMAS", "500OG B- DECAY"}
+
+
+def test_get_dataset_caches_result(ensdf):
+    d1 = ensdf.get_dataset(NUCLEUS, "ADOPTED LEVELS, GAMMAS")
+    d2 = ensdf.get_dataset(NUCLEUS, "ADOPTED LEVELS, GAMMAS")
+    assert d1 is d2
+
+
+def test_get_adopted_levels_caches_and_shares_key(ensdf):
+    al = ensdf.get_adopted_levels(NUCLEUS)
+    d = ensdf.get_dataset(NUCLEUS, "ADOPTED LEVELS, GAMMAS")
+    assert al is d
+
+
+def test_get_dataset_does_not_reparse_on_cache_hit(ensdf):
+    with patch.object(
+        ensdf.provider, "get_dataset", wraps=ensdf.provider.get_dataset
+    ) as spy:
+        ensdf.get_dataset(NUCLEUS, "ADOPTED LEVELS, GAMMAS")
+        ensdf.get_dataset(NUCLEUS, "ADOPTED LEVELS, GAMMAS")
+    assert spy.call_count == 1
