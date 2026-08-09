@@ -19,14 +19,21 @@
 
 """Wrapper for ENSDF providers"""
 
-import lzma
+from __future__ import annotations
+
+import hashlib
+import json
 import os
-import pickle
 from abc import ABC, abstractmethod
-from os.path import getmtime
 from pathlib import Path
 
+import platformdirs
+
 from .util import az_from_nucid
+
+
+class ENSDFIndexError(RuntimeError):
+    """Raised when a cached index entry points to an invalid record."""
 
 
 class ENSDFProvider(ABC):
@@ -35,52 +42,109 @@ class ENSDFProvider(ABC):
         """
         returns a raw ENSDF dataset
         """
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def get_adopted_levels(self, nucleus: tuple[int, int]) -> str:
         """
         returns the raw ADOPTED LEVELS[, GAMMAS] dataset of a nucleus
         """
-        pass
+        raise NotImplementedError
 
 
 class ENSDFFileProvider(ENSDFProvider):
-    def __init__(self, folder: str | Path | None = None) -> None:
-        if not folder:
-            folder = os.getenv(
-                "ENSDF_PATH",
-                Path(os.getenv("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-                / "ensdf",
-            )
-        if isinstance(folder, str):
-            folder = Path(folder)
-        self.folder = folder
-        self.cachedir = (
-            Path(os.getenv("XDG_CACHE_HOME", Path.home() / ".cache")) / "nudel"
-        )
-        self.cachedir.mkdir(parents=True, exist_ok=True)
-        self.index = dict()
+    def __init__(
+        self,
+        path: str | Path | None = None,
+        version: str = "latest",
+    ) -> None:
+        """Create an ENSDF provider backed by on-disk ``ensdf.???`` files.
+
+        Resolution order (first match wins):
+
+        1. ``path`` argument — used directly, no fetch, no versioning.
+        2. ``ENSDF_PATH`` environment variable — used directly, no fetch.
+        3. Otherwise — :func:`nudel.fetch.fetch` is called to download (if
+           needed) and locate the requested ENSDF ``version``.
+
+        Args:
+            path: Directory holding ``ensdf.???`` files. Bypasses fetch and
+                versioning when provided.
+            version: ENSDF version (``"latest"`` or ``YYMMDD``). Ignored
+                when ``path`` is given or ``ENSDF_PATH`` is set.
+        """
+        from . import fetch as _fetch
+
+        if path is not None:
+            self.folder = Path(path)
+            self.version: str | None = None
+        elif (env_path := os.getenv("ENSDF_PATH")) is not None:
+            self.folder = Path(env_path)
+            self.version = None
+        else:
+            self.folder = Path(_fetch.fetch(version))
+            self.version = _fetch.current_version() or "unknown"
+
+        self.cachedir = platformdirs.user_cache_path("nudel")
+        self.index: dict[tuple[tuple[int, int | None], str], int] = {}
         self.gen_index()
-        self.adopted_levels = dict()
+        self.adopted_levels: dict[tuple[int, int], str] = {}
         for nucleus, name in self.index:
             if "ADOPTED LEVELS" in name:
-                self.adopted_levels[nucleus] = name
+                mass, Z = nucleus
+                if Z is not None:
+                    self.adopted_levels[(mass, Z)] = name
 
-    def gen_index(self):
-        """
-        Generate index of ENSDF datasets and file position
-        """
+    def _index_key(self) -> str:
+        """Return the cache filename component identifying this data set."""
+        if self.version is not None:
+            return self.version
+        return "path_" + hashlib.md5(str(self.folder).encode()).hexdigest()[:12]
+
+    def _index_file(self) -> Path:
+        return self.cachedir / "index" / f"{self._index_key()}.json"
+
+    @staticmethod
+    def _serialize_index(
+        index: dict[tuple[tuple[int, int | None], str], int],
+        version: str | None,
+    ) -> str:
+        return json.dumps(
+            {
+                "version": version,
+                "entries": [
+                    {"nucleus": list(nucleus), "name": name, "offset": offset}
+                    for (nucleus, name), offset in index.items()
+                ],
+            }
+        )
+
+    @staticmethod
+    def _deserialize_index(
+        text: str,
+    ) -> dict[tuple[tuple[int, int | None], str], int]:
+        data = json.loads(text)
+        index: dict[tuple[tuple[int, int | None], str], int] = {}
+        for entry in data.get("entries", []):
+            mass, Z = entry["nucleus"]
+            index[((mass, Z), entry["name"])] = int(entry["offset"])
+        return index
+
+    def gen_index(self) -> None:
+        """Build (or load) the index of ENSDF datasets and byte offsets."""
+        index_file = self._index_file()
+        if index_file.is_file():
+            self.index = self._deserialize_index(index_file.read_text())
+            return
+
         ensdf_files = list(self.folder.glob("ensdf.???"))
-        index_file = self.cachedir / "ensdf_index.pickle.xz"
-        last_modified = max([getmtime(f_path) for f_path in ensdf_files])
-        if index_file.is_file() and getmtime(index_file) > last_modified:
-            with lzma.open(index_file, "r") as index:
-                self.index = pickle.load(index)
-                return
+        if not ensdf_files:
+            raise FileNotFoundError(
+                f"No ENSDF files (ensdf.???) found in {self.folder}"
+            )
 
         for f_path in ensdf_files:
-            with open(f_path) as f:
+            with open(f_path, encoding="latin-1") as f:
                 linestart = f.tell()
                 line = f.readline()
                 while line:
@@ -89,19 +153,58 @@ class ENSDFFileProvider(ENSDFProvider):
                         self.index[(nucleus, line[9:39].strip())] = linestart
                     linestart = f.tell()
                     line = f.readline()
-        if self.index:
-            with lzma.open(index_file, "wb") as index:
-                pickle.dump(self.index, index, protocol=pickle.HIGHEST_PROTOCOL)
+
+        index_file.parent.mkdir(parents=True, exist_ok=True)
+        index_file.write_text(self._serialize_index(self.index, self.version))
 
     def get_dataset(self, nucleus: tuple[int, int | None], name: str) -> str:
+        """Return the raw ENSDF dataset for ``(nucleus, name)``.
+
+        Raises:
+            KeyError: ``(nucleus, name)`` not in the index.
+            ENSDFIndexError: Cached offset does not point at an ID record.
+        """
         mass, Z = nucleus
+        offset = self.index[nucleus, name]
         res = ""
-        with open(self.folder / f"ensdf.{mass:03d}") as f:
-            f.seek(self.index[nucleus, name])
+        with open(self.folder / f"ensdf.{mass:03d}", encoding="latin-1") as f:
+            f.seek(offset)
+            first = f.readline()
+            if len(first) < 9 or first[5:9] != "    ":
+                raise ENSDFIndexError(
+                    f"Index for ({nucleus}, {name!r}) points to invalid record "
+                    f"at byte {offset} in ensdf.{mass:03d}"
+                )
+            res += first
             for line in f:
                 if line.strip() == "":
                     return res
                 res += line
+        return res
+
+    def get_adopted_levels(self, nucleus: tuple[int, int]) -> str:
+        return self.get_dataset(nucleus, self.adopted_levels[nucleus])
+
+
+class ENSDFInMemoryProvider(ENSDFProvider):
+    """Provider backed by an in-memory dict — for tests only.
+
+    Maps ``((mass, Z), name) -> raw_dataset_text`` and is drop-in compatible
+    with :class:`nudel.core.ENSDF`, exposing ``.index`` and
+    ``.adopted_levels`` like :class:`ENSDFFileProvider`. Lets unit tests run
+    without any real ENSDF data on disk.
+    """
+
+    def __init__(self, data: dict[tuple[tuple[int, int | None], str], str]) -> None:
+        self.data = data
+        self.index = dict.fromkeys(data)
+        self.adopted_levels: dict[tuple[int, int], str] = {}
+        for (mass, Z), name in self.index:
+            if Z is not None and "ADOPTED LEVELS" in name:
+                self.adopted_levels[(mass, Z)] = name
+
+    def get_dataset(self, nucleus: tuple[int, int | None], name: str) -> str:
+        return self.data[nucleus, name]
 
     def get_adopted_levels(self, nucleus: tuple[int, int]) -> str:
         return self.get_dataset(nucleus, self.adopted_levels[nucleus])
