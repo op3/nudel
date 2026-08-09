@@ -740,29 +740,28 @@ class XReference:
     reference: CrossReferenceRecord
 
 
+RECORD_TYPES: dict[str, type] = {
+    "X": CrossReferenceRecord,
+    "Q": QValueRecord,
+    "N": NormalizationRecord,
+    "L": LevelRecord,
+    "B": BetaRecord,
+    "E": ECRecord,
+    "A": AlphaRecord,
+    "G": GammaRecord,
+}
+
+
 def get_record_type(record):
-    if record[0][7] == "X":
-        return CrossReferenceRecord
-    if record[0][7] == "Q":
-        return QValueRecord
-    if record[0][7] == "N":
-        return NormalizationRecord
-    if record[0][7] == "L":
-        return LevelRecord
-    if record[0][7] == "B":
-        return BetaRecord
-    if record[0][7] == "E":
-        return ECRecord
-    if record[0][7] == "A":
-        return AlphaRecord
-    if record[0][7] == "G":
-        return GammaRecord
-    if record[0][7] in " D" and record[0][8] in "PAN":
+    rtype = record[0][7]
+    if rtype in " D" and record[0][8] in "PAN":
         return ParticleRecord
-    else:
+    try:
+        return RECORD_TYPES[rtype]
+    except KeyError:
         raise NotImplementedError(
-            f"Unknown record with type '{record[0][7]}': '{record[0]}'"
-        )
+            f"Unknown record with type '{rtype}': '{record[0]}'"
+        ) from None
 
 
 class Nuclide:
