@@ -32,6 +32,137 @@ from .util import ELEMENTS, Quantity, az_from_nucid, nucid_from_az
 logger = logging.getLogger(__name__)
 
 
+def slice_fields(line: str, fields: tuple[tuple[str, int, int], ...]) -> dict[str, str]:
+    """Slice ``line`` into a ``{name: stripped_value}`` dict per the layout table."""
+    return {name: line[start:end].strip() for name, start, end in fields}
+
+
+QVALUE_FIELDS = (
+    ("Q-", 9, 19),
+    ("DQ-", 19, 21),
+    ("N", 21, 29),
+    ("DN", 29, 31),
+    ("P", 31, 39),
+    ("DP", 39, 41),
+    ("A", 41, 49),
+    ("DA", 49, 55),
+    ("QREF", 55, 80),
+)
+
+XREF_FIELDS = (
+    ("dssym", 8, 9),
+    ("dsid", 9, 39),
+)
+
+PARENT_FIELDS = (
+    ("E", 9, 19),
+    ("DE", 19, 21),
+    ("J", 21, 39),
+    ("T", 39, 49),
+    ("DT", 49, 55),
+    ("QP", 64, 74),
+    ("DQP", 74, 76),
+    ("ION", 76, 80),
+)
+
+NORMALIZATION_FIELDS = (
+    ("NR", 9, 19),
+    ("DNR", 19, 21),
+    ("NT", 21, 29),
+    ("DNT", 29, 31),
+    ("BR", 31, 39),
+    ("DBR", 39, 41),
+    ("NB", 41, 49),
+    ("DNB", 49, 55),
+    ("NP", 55, 62),
+    ("DNP", 62, 64),
+)
+
+LEVEL_FIELDS = (
+    ("E", 9, 19),
+    ("DE", 19, 21),
+    ("J", 21, 39),
+    ("T", 39, 49),
+    ("DT", 49, 55),
+    ("L", 55, 64),
+    ("S", 64, 74),
+    ("DS", 74, 76),
+    ("C", 76, 77),
+    ("MS", 77, 79),
+)
+
+BETA_FIELDS = (
+    ("E", 9, 19),
+    ("DE", 19, 21),
+    ("IB", 21, 29),
+    ("DIB", 29, 31),
+    ("LOGFT", 41, 49),
+    ("DFT", 49, 55),
+    ("C", 76, 77),
+    ("UN", 77, 79),
+)
+
+EC_FIELDS = (
+    ("E", 9, 19),
+    ("DE", 19, 21),
+    ("IB", 21, 29),
+    ("DIB", 29, 31),
+    ("IE", 31, 39),
+    ("DIE", 39, 41),
+    ("LOGFT", 41, 49),
+    ("DFT", 49, 55),
+    ("TI", 64, 74),
+    ("DTI", 74, 76),
+    ("C", 76, 77),
+    ("UN", 77, 79),
+)
+
+ALPHA_FIELDS = (
+    ("E", 9, 19),
+    ("DE", 19, 21),
+    ("IA", 21, 29),
+    ("DIA", 29, 31),
+    ("HF", 31, 39),
+    ("DHF", 39, 41),
+    ("C", 76, 77),
+)
+
+PARTICLE_FIELDS = (
+    ("E", 9, 19),
+    ("DE", 19, 21),
+    ("IP", 21, 29),
+    ("DIP", 29, 31),
+    ("EI", 31, 39),
+    ("T", 39, 49),
+    ("DT", 49, 55),
+    ("L", 55, 64),
+    ("C", 76, 77),
+    ("COIN", 78, 79),
+)
+
+GAMMA_FIELDS = (
+    ("E", 9, 19),
+    ("DE", 19, 21),
+    ("RI", 21, 29),
+    ("DRI", 29, 31),
+    ("M", 31, 41),
+    ("MR", 41, 49),
+    ("DMR", 49, 55),
+    ("CC", 55, 62),
+    ("DCC", 62, 64),
+    ("TI", 64, 74),
+    ("DTI", 74, 76),
+    ("C", 76, 77),
+    ("COIN", 78, 79),
+)
+
+REFERENCE_FIELDS = (
+    ("MASS", 0, 3),
+    ("KEYNUM", 9, 17),
+    ("REFERENCE", 17, 80),
+)
+
+
 class ENSDF:
     active_ensdf = None
 
@@ -347,20 +478,11 @@ class Record(BaseRecord):
 
 class QValueRecord(BaseRecord):
     def __init__(self, dataset, line):
-        self.prop = dict()
-        self.prop["Q-"] = line[9:19].strip()
-        self.prop["DQ-"] = line[19:21].strip()
-        self.prop["Q-"] += " " + self.prop["DQ-"].strip()
-        self.prop["N"] = line[21:29].strip()
-        self.prop["DN"] = line[29:31].strip()
-        self.prop["N"] += " " + self.prop["DN"].strip()
-        self.prop["P"] = line[31:39].strip()
-        self.prop["DP"] = line[39:41].strip()
-        self.prop["P"] += " " + self.prop["DP"].strip()
-        self.prop["A"] = line[41:49].strip()
-        self.prop["DA"] = line[49:55].strip()
-        self.prop["A"] += " " + self.prop["DA"].strip()
-        self.prop["QREF"] = line[55:80].strip()
+        self.prop = slice_fields(line, QVALUE_FIELDS)
+        self.prop["Q-"] += " " + self.prop["DQ-"]
+        self.prop["N"] += " " + self.prop["DN"]
+        self.prop["P"] += " " + self.prop["DP"]
+        self.prop["A"] += " " + self.prop["DA"]
 
         self.q_beta_minus = Quantity(self.prop["Q-"])
         self.neutron_separation = Quantity(self.prop["N"])
@@ -378,8 +500,9 @@ class QValueRecord(BaseRecord):
 class CrossReferenceRecord(BaseRecord):
     def __init__(self, dataset, line):
         self.parent_dataset = dataset
-        self.dssym = line[8]
-        self.dsid = line[9:39].strip()
+        fields = slice_fields(line, XREF_FIELDS)
+        self.dssym = fields["dssym"]
+        self.dsid = fields["dsid"]
 
     def get_dataset(self):
         return ENSDF.active_ensdf.get_dataset(self.parent_dataset.nucleus, self.dsid)
@@ -408,17 +531,10 @@ class GeneralCommentRecord(BaseRecord):
 class ParentRecord(Record):
     def __init__(self, dataset, record):
         super().__init__(dataset, record, None, None)
-        self.prop["E"] = record[9:19].strip()
-        self.prop["DE"] = record[19:21].strip()
-        self.prop["E"] += " " + self.prop["DE"].strip()
-        self.prop["J"] = record[21:39].strip()
-        self.prop["T"] = record[39:49].strip()
-        self.prop["DT"] = record[49:55].strip()
-        self.prop["T"] += " " + self.prop["DT"].strip()
-        self.prop["QP"] = record[64:74].strip()
-        self.prop["DQP"] = record[74:76].strip()
-        self.prop["QP"] += " " + self.prop["DQP"].strip()
-        self.prop["ION"] = record[76:80].strip()
+        self.prop.update(slice_fields(record, PARENT_FIELDS))
+        self.prop["E"] += " " + self.prop["DE"]
+        self.prop["T"] += " " + self.prop["DT"]
+        self.prop["QP"] += " " + self.prop["DQP"]
         self.load_prop(record[1:])
 
         self.energy = Quantity(self.prop["E"], "KEV")
@@ -430,21 +546,12 @@ class ParentRecord(Record):
 class NormalizationRecord(Record):
     def __init__(self, dataset, record):
         super().__init__(dataset, record, None, None)
-        self.prop["NR"] = record[9:19].strip()
-        self.prop["DNR"] = record[19:21].strip()
-        self.prop["NR"] += " " + self.prop["DNR"].strip()
-        self.prop["NT"] = record[21:29].strip()
-        self.prop["DNT"] = record[29:31].strip()
-        self.prop["NT"] += " " + self.prop["DNT"].strip()
-        self.prop["BR"] = record[31:39].strip()
-        self.prop["DBR"] = record[39:41].strip()
-        self.prop["BR"] += " " + self.prop["DBR"].strip()
-        self.prop["NB"] = record[41:49].strip()
-        self.prop["DNB"] = record[49:55].strip()
-        self.prop["NB"] += " " + self.prop["DNB"].strip()
-        self.prop["NP"] = record[55:62].strip()
-        self.prop["DNP"] = record[62:64].strip()
-        self.prop["NP"] += " " + self.prop["DNP"].strip()
+        self.prop.update(slice_fields(record, NORMALIZATION_FIELDS))
+        self.prop["NR"] += " " + self.prop["DNR"]
+        self.prop["NT"] += " " + self.prop["DNT"]
+        self.prop["BR"] += " " + self.prop["DBR"]
+        self.prop["NB"] += " " + self.prop["DNB"]
+        self.prop["NP"] += " " + self.prop["DNP"]
         self.load_prop(record[1:])
 
         self.branching_ratio = Quantity(self.prop["BR"])
@@ -455,19 +562,10 @@ class NormalizationRecord(Record):
 class LevelRecord(Record):
     def __init__(self, dataset, record, comments, xref):
         super().__init__(dataset, record, comments, xref)
-        self.prop["E"] = record[0][9:19].strip()
-        self.prop["DE"] = record[0][19:21].strip()
-        self.prop["E"] += " " + self.prop["DE"].strip()
-        self.prop["J"] = record[0][21:39].strip()
-        self.prop["T"] = record[0][39:49].strip()
-        self.prop["DT"] = record[0][49:55].strip()
-        self.prop["T"] += " " + self.prop["DT"].strip()
-        self.prop["L"] = record[0][55:64].strip()
-        self.prop["S"] = record[0][64:74].strip()
-        self.prop["DS"] = record[0][74:76].strip()
-        self.prop["C"] = record[0][76].strip()
-        self.prop["MS"] = record[0][77:79].strip()
+        self.prop.update(slice_fields(record[0], LEVEL_FIELDS))
         self.prop["Q"] = record[0][79].strip()
+        self.prop["E"] += " " + self.prop["DE"]
+        self.prop["T"] += " " + self.prop["DT"]
         self.load_prop(record[1:])
 
         self.state_num = None
@@ -530,18 +628,11 @@ class DecayRecord(Record):
 class BetaRecord(DecayRecord):
     def __init__(self, dataset, record, comments, xref, dest_level):
         super().__init__(dataset, record, comments, xref, dest_level)
-        self.prop["E"] = record[0][9:19].strip()
-        self.prop["DE"] = record[0][19:21].strip()
-        self.prop["E"] += " " + self.prop["DE"].strip()
-        self.prop["IB"] = record[0][21:29].strip()
-        self.prop["DIB"] = record[0][29:31].strip()
-        self.prop["IB"] += " " + self.prop["DIB"].strip()
-        self.prop["LOGFT"] = record[0][41:49].strip()
-        self.prop["DFT"] = record[0][49:55].strip()
-        self.prop["LOGFT"] += " " + self.prop["DFT"].strip()
-        self.prop["C"] = record[0][76].strip()
-        self.prop["UN"] = record[0][77:79].strip()
+        self.prop.update(slice_fields(record[0], BETA_FIELDS))
         self.prop["Q"] = record[0][79].strip()
+        self.prop["E"] += " " + self.prop["DE"]
+        self.prop["IB"] += " " + self.prop["DIB"]
+        self.prop["LOGFT"] += " " + self.prop["DFT"]
         self.load_prop(record[1:])
 
         self.energy = Quantity(self.prop["E"], "KEV")
@@ -555,24 +646,13 @@ class BetaRecord(DecayRecord):
 class ECRecord(DecayRecord):
     def __init__(self, dataset, record, comments, xref, dest_level):
         super().__init__(dataset, record, comments, xref, dest_level)
-        self.prop["E"] = record[0][9:19].strip()
-        self.prop["DE"] = record[0][19:21].strip()
-        self.prop["E"] += " " + self.prop["DE"].strip()
-        self.prop["IB"] = record[0][21:29].strip()
-        self.prop["DIB"] = record[0][29:31].strip()
-        self.prop["IB"] += " " + self.prop["DIB"].strip()
-        self.prop["IE"] = record[0][31:39].strip()
-        self.prop["DIE"] = record[0][39:41].strip()
-        self.prop["IE"] += " " + self.prop["DIE"].strip()
-        self.prop["LOGFT"] = record[0][41:49].strip()
-        self.prop["DFT"] = record[0][49:55].strip()
-        self.prop["LOGFT"] += " " + self.prop["DFT"].strip()
-        self.prop["TI"] = record[0][64:74].strip()
-        self.prop["DTI"] = record[0][74:76].strip()
-        self.prop["TI"] += " " + self.prop["DTI"].strip()
-        self.prop["C"] = record[0][76].strip()
-        self.prop["UN"] = record[0][77:79].strip()
+        self.prop.update(slice_fields(record[0], EC_FIELDS))
         self.prop["Q"] = record[0][79].strip()
+        self.prop["E"] += " " + self.prop["DE"]
+        self.prop["IB"] += " " + self.prop["DIB"]
+        self.prop["IE"] += " " + self.prop["DIE"]
+        self.prop["LOGFT"] += " " + self.prop["DFT"]
+        self.prop["TI"] += " " + self.prop["DTI"]
         self.load_prop(record[1:])
 
         self.energy = Quantity(self.prop["E"], "KEV")
@@ -586,17 +666,11 @@ class ECRecord(DecayRecord):
 class AlphaRecord(DecayRecord):
     def __init__(self, dataset, record, comments, xref, dest_level):
         super().__init__(dataset, record, comments, xref, dest_level)
-        self.prop["E"] = record[0][9:19].strip()
-        self.prop["DE"] = record[0][19:21].strip()
-        self.prop["E"] += " " + self.prop["DE"].strip()
-        self.prop["IA"] = record[0][21:29].strip()
-        self.prop["DIA"] = record[0][29:31].strip()
-        self.prop["IA"] += " " + self.prop["DIA"].strip()
-        self.prop["HF"] = record[0][31:39].strip()
-        self.prop["DHF"] = record[0][39:41].strip()
-        self.prop["HF"] += " " + self.prop["DHF"].strip()
-        self.prop["C"] = record[0][76].strip()
+        self.prop.update(slice_fields(record[0], ALPHA_FIELDS))
         self.prop["Q"] = record[0][79].strip()
+        self.prop["E"] += " " + self.prop["DE"]
+        self.prop["IA"] += " " + self.prop["DIA"]
+        self.prop["HF"] += " " + self.prop["DHF"]
         self.load_prop(record[1:])
 
         self.energy = Quantity(self.prop["E"], "KEV")
@@ -612,20 +686,11 @@ class ParticleRecord(DecayRecord):
         super().__init__(dataset, record, comments, xref, dest_level)
         self.prop["D"] = record[0][7]
         self.prop["Particle"] = record[0][8]
-        self.prop["E"] = record[0][9:19].strip()
-        self.prop["DE"] = record[0][19:21].strip()
-        self.prop["E"] += " " + self.prop["DE"].strip()
-        self.prop["IP"] = record[0][21:29].strip()
-        self.prop["DIP"] = record[0][29:31].strip()
-        self.prop["IP"] += " " + self.prop["DIP"].strip()
-        self.prop["EI"] = record[0][31:39].strip()
-        self.prop["T"] = record[0][39:49].strip()
-        self.prop["DT"] = record[0][49:55].strip()
-        self.prop["T"] += " " + self.prop["DT"].strip()
-        self.prop["L"] = record[0][55:64].strip()
-        self.prop["C"] = record[0][76].strip()
-        self.prop["COIN"] = record[0][78].strip()
+        self.prop.update(slice_fields(record[0], PARTICLE_FIELDS))
         self.prop["Q"] = record[0][79].strip()
+        self.prop["E"] += " " + self.prop["DE"]
+        self.prop["IP"] += " " + self.prop["DIP"]
+        self.prop["T"] += " " + self.prop["DT"]
         self.load_prop(record[1:])
 
         self.prompt_emission = self.prop["D"] == " "
@@ -645,25 +710,13 @@ class GammaRecord(DecayRecord):
         self.orig_level = orig_level
         if self.orig_level:
             self.orig_level.add_decay(self)
-        self.prop["E"] = record[0][9:19].strip()
-        self.prop["DE"] = record[0][19:21].strip()
-        self.prop["E"] += " " + self.prop["DE"].strip()
-        self.prop["RI"] = record[0][21:29].strip()
-        self.prop["DRI"] = record[0][29:31].strip()
-        self.prop["RI"] += " " + self.prop["DRI"].strip()
-        self.prop["M"] = record[0][31:41].strip()
-        self.prop["MR"] = record[0][41:49].strip()
-        self.prop["DMR"] = record[0][49:55].strip()
-        self.prop["MR"] += " " + self.prop["DMR"].strip()
-        self.prop["CC"] = record[0][55:62].strip()
-        self.prop["DCC"] = record[0][62:64].strip()
-        self.prop["CC"] += " " + self.prop["DCC"].strip()
-        self.prop["TI"] = record[0][64:74].strip()
-        self.prop["DTI"] = record[0][74:76].strip()
-        self.prop["TI"] += " " + self.prop["DTI"].strip()
-        self.prop["C"] = record[0][76].strip()
-        self.prop["COIN"] = record[0][78].strip()
+        self.prop.update(slice_fields(record[0], GAMMA_FIELDS))
         self.prop["Q"] = record[0][79].strip()
+        self.prop["E"] += " " + self.prop["DE"]
+        self.prop["RI"] += " " + self.prop["DRI"]
+        self.prop["MR"] += " " + self.prop["DMR"]
+        self.prop["CC"] += " " + self.prop["DCC"]
+        self.prop["TI"] += " " + self.prop["DTI"]
         self.load_prop(record[1:])
 
         self.energy = Quantity(self.prop["E"], "KEV")
@@ -726,11 +779,8 @@ class GammaRecord(DecayRecord):
 
 class ReferenceRecord(BaseRecord):
     def __init__(self, dataset, line):
-        self.prop = dict()
+        self.prop = slice_fields(line, REFERENCE_FIELDS)
         self.dataset = dataset
-        self.prop["MASS"] = line[0:3].strip()
-        self.prop["KEYNUM"] = line[9:17].strip()
-        self.prop["REFERENCE"] = line[17:80].strip()
 
 
 @dataclass
