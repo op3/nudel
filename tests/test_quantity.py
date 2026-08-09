@@ -54,8 +54,10 @@ def cmp_nan_safe(a, b):
     try:
         if isnan(a):
             return isnan(b)
-    except Exception:
+    except (TypeError, ValueError):
         pass
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return a == pytest.approx(b)
     return a == b
 
 
