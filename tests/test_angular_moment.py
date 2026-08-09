@@ -192,3 +192,14 @@ def test_parse_simple_range_helper_b():
         (5.0, None),
         (6.0, "-"),
     ]
+
+
+def test_ang_mom_range_descending_yields_empty():
+    assert ang_mom_parser("3/2+ TO 1/2+") == []
+
+
+def test_ang_mom_parser_non_numeric_range_fallback():
+    res = ang_mom_parser("abc to xyz")
+    assert len(res) == 1
+    assert res[0].val is None
+    assert res[0].parity is None

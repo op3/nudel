@@ -940,8 +940,10 @@ def _parse_simple_range(s: str) -> "list[AngularMoment]":
     try:
         pairs = list(ang_mom_range_to_tuple(f"{start_str} to {stop_str}"))
     except (TypeError, ValueError):
-        pairs = []
-    if not pairs or not isinstance(pairs[0], tuple):
+        return [AngularMoment(s, None)]
+    if not pairs:
+        return []
+    if not isinstance(pairs[0], tuple):
         return [AngularMoment(s, None)]
     res = []
     last = len(pairs) - 1
