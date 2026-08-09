@@ -1,62 +1,64 @@
-# This is a basic workflow to help you get started with Actions
-name: CI 
+name: CI
 
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the master branch
   push:
-    branches:
-      - master
+    branches: [main, master]
   pull_request:
-    branches:
-      - master
+    branches: [main, master]
 
-# Store environment variables
+permissions:
+  contents: read
+
 env:
+  ENSDF_VERSION: "250902"
+  ENSDF_DIST: "dist25"
   ENSDF_PATH: "/tmp/ensdf"
-  ENSDF_ARCHIVE: "ensdf_250902.zip"
-  ENSDF_URL: "https://www.nndc.bnl.gov/ensdfarchivals/distributions/dist25/ensdf_250902.zip"
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # Job "test"
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9
+      - run: uv sync --extra dev --extra test
+      - run: uv run ruff check nudel tests
+      - run: uv run ruff format --check nudel tests
+
+  type:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9
+      - run: uv sync --extra dev --extra test
+      # pyrefly is informational-only: ~21 pre-existing typing errors remain
+      # from a pending typing refactor; do not block CI on them.
+      - run: uv run pyrefly check nudel
+        continue-on-error: true
+
   test:
-
-    name: Testing with Python ${{matrix.python-version}} on ${{matrix.os}}
-
-    # Test on still-supported LTS and latest ubuntu with lowest and latest supported Python version
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-        python-version: ["3.10", "3.x"]
-
-    runs-on: ${{matrix.os}}
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
+        # 3.10 = support floor (requires-python>=3.10);
+        # 3.13 = current stable; 3.14 = latest as of Oct 2025.
+        python-version: ["3.10", "3.13", "3.14"]
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
     steps:
-      
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
- 
-      # Setup an isolated Python env
-      - name: Setup python
-        uses: actions/setup-python@v6
+      - uses: astral-sh/setup-uv@v6
+      - name: Cache ENSDF data
+        id: ensdf-cache
+        uses: actions/cache@v4
         with:
-          python-version: ${{matrix.python-version}}
-      
-      # Just make sure we are running on latest pip
-      - name: Dependency installation
+          path: ${{ env.ENSDF_PATH }}
+          key: ensdf-${{ env.ENSDF_VERSION }}
+      - name: Download ENSDF
+        if: steps.ensdf-cache.outputs.cache-hit != 'true'
         run: |
-          pip install --upgrade pip
-          wget $ENSDF_URL
-          mkdir $ENSDF_PATH
-          unzip $ENSDF_ARCHIVE -d $ENSDF_PATH
-      
-      # Install with test dependencies
-      - name: Package installation
-        run: pip install .[test]
-
-      # Run the test
-      - name: Testing on ${{github.head_ref || github.ref_name}}
-        run: pytest
+          wget "https://www.nndc.bnl.gov/ensdfarchivals/distributions/${ENSDF_DIST}/ensdf_${ENSDF_VERSION}.zip"
+          mkdir -p "${ENSDF_PATH}"
+          unzip "ensdf_${ENSDF_VERSION}.zip" -d "${ENSDF_PATH}"
+      - run: uv sync --extra test
+      - run: uv run pytest
