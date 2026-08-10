@@ -25,6 +25,7 @@ import warnings
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime
+from typing import ClassVar
 
 from .provider import ENSDFFileProvider, ENSDFProvider
 from .util import ELEMENTS, Quantity, az_from_nucid, nucid_from_az
@@ -164,7 +165,7 @@ REFERENCE_FIELDS = (
 
 
 class ENSDF:
-    active_ensdf = None
+    active_ensdf: ClassVar["ENSDF | None"] = None
 
     def __init__(
         self,
@@ -180,8 +181,10 @@ class ENSDF:
                 when ``provider`` is given.
         """
         self.provider = provider or ENSDFFileProvider(version=version)
-        self.datasets = dict.fromkeys(self.provider.index)
-        self._old_active = None
+        self.datasets: dict[tuple[tuple[int, int | None], str], Dataset | None] = (
+            dict.fromkeys(self.provider.index)
+        )
+        self._old_active: ENSDF | None = None
 
     def get_dataset(self, nuclide: tuple[int, int | None], name: str) -> "Dataset":
         """Returns specified dataset.
@@ -196,10 +199,12 @@ class ENSDF:
         """
         if (nuclide, name) not in self.datasets:
             raise KeyError("Dataset not found")
-        if self.datasets[(nuclide, name)] is None:
+        dataset = self.datasets[(nuclide, name)]
+        if dataset is None:
             res = self.provider.get_dataset(nuclide, name)
-            self.datasets[(nuclide, name)] = Dataset(res)
-        return self.datasets[(nuclide, name)]
+            dataset = Dataset(res)
+            self.datasets[(nuclide, name)] = dataset
+        return dataset
 
     def get_adopted_levels(self, nuclide: tuple[int, int]) -> "Dataset":
         """Get adopted levels dataset of a nuclide
@@ -211,10 +216,11 @@ class ENSDF:
             Dataset "ADOPTED LEVELS[…]" of given nuclide
         """
         name = self.provider.adopted_levels[nuclide]
-        if self.datasets[(nuclide, name)] is None:
-            res = Dataset(self.provider.get_adopted_levels(nuclide))
-            self.datasets[(nuclide, name)] = res
-        return self.datasets[(nuclide, name)]
+        dataset = self.datasets[(nuclide, name)]
+        if dataset is None:
+            dataset = Dataset(self.provider.get_adopted_levels(nuclide))
+            self.datasets[(nuclide, name)] = dataset
+        return dataset
 
     def get_datasets_by_nuclide(self, nuclide: tuple[int, int | None]) -> list[str]:
         """Get names of all datasets of a nuclide
@@ -239,7 +245,7 @@ class ENSDF:
             A list of tuples, each containing the nucleon number and
             proton number of an indexed nuclide.
         """
-        return self.provider.adopted_levels.keys()
+        return list(self.provider.adopted_levels.keys())
 
     def __enter__(self):
         self._old_active = ENSDF.active_ensdf
@@ -504,8 +510,8 @@ class CrossReferenceRecord(BaseRecord):
         self.dssym = fields["dssym"]
         self.dsid = fields["dsid"]
 
-    def get_dataset(self):
-        return ENSDF.active_ensdf.get_dataset(self.parent_dataset.nucleus, self.dsid)
+    def get_dataset(self) -> "Dataset":
+        return get_active_ensdf().get_dataset(self.parent_dataset.nucleus, self.dsid)
 
     def __repr__(self):
         return f"<{self.__class__.__name__}: {self.dsid}>"
@@ -845,7 +851,10 @@ class Nuclide:
         nucid = nucid_from_az((self.mass, self.protons)).strip()
         for nucid_i, name_i in self.ensdf.datasets:
             if name_i.startswith(nucid) and "DECAY" in name_i:
-                yield (nucid_i, name_i)
+                mass, z = nucid_i
+                if z is None:
+                    continue
+                yield ((mass, z), name_i)
 
     def __str__(self):
         element = ELEMENTS[self.protons]

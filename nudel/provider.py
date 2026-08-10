@@ -37,6 +37,9 @@ class ENSDFIndexError(RuntimeError):
 
 
 class ENSDFProvider(ABC):
+    index: dict[tuple[tuple[int, int | None], str], int]
+    adopted_levels: dict[tuple[int, int], str]
+
     @abstractmethod
     def get_dataset(self, nucleus: tuple[int, int | None], name: str) -> str:
         """
@@ -197,7 +200,7 @@ class ENSDFInMemoryProvider(ENSDFProvider):
 
     def __init__(self, data: dict[tuple[tuple[int, int | None], str], str]) -> None:
         self.data = data
-        self.index = dict.fromkeys(data)
+        self.index = {key: 0 for key in data}
         self.adopted_levels: dict[tuple[int, int], str] = {}
         for (mass, Z), name in self.index:
             if Z is not None and "ADOPTED LEVELS" in name:
