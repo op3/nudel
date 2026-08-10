@@ -27,7 +27,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import ClassVar
 
-from .provider import ENSDFFileProvider, ENSDFProvider
+from .provider import (
+    DatasetKey,
+    ENSDFFileProvider,
+    ENSDFProvider,
+    NuclideKey,
+    NuclideTuple,
+)
 from .util import ELEMENTS, Quantity, az_from_nucid, nucid_from_az
 
 logger = logging.getLogger(__name__)
@@ -181,12 +187,12 @@ class ENSDF:
                 when ``provider`` is given.
         """
         self.provider = provider or ENSDFFileProvider(version=version)
-        self.datasets: dict[tuple[tuple[int, int | None], str], Dataset | None] = (
-            dict.fromkeys(self.provider.index)
+        self.datasets: dict[DatasetKey, Dataset | None] = dict.fromkeys(
+            self.provider.index
         )
         self._old_active: ENSDF | None = None
 
-    def get_dataset(self, nuclide: tuple[int, int | None], name: str) -> "Dataset":
+    def get_dataset(self, nuclide: NuclideKey, name: str) -> "Dataset":
         """Returns specified dataset.
 
         Args:
@@ -206,7 +212,7 @@ class ENSDF:
             self.datasets[(nuclide, name)] = dataset
         return dataset
 
-    def get_adopted_levels(self, nuclide: tuple[int, int]) -> "Dataset":
+    def get_adopted_levels(self, nuclide: NuclideTuple) -> "Dataset":
         """Get adopted levels dataset of a nuclide
 
         Args:
@@ -222,7 +228,7 @@ class ENSDF:
             self.datasets[(nuclide, name)] = dataset
         return dataset
 
-    def get_datasets_by_nuclide(self, nuclide: tuple[int, int | None]) -> list[str]:
+    def get_datasets_by_nuclide(self, nuclide: NuclideKey) -> list[str]:
         """Get names of all datasets of a nuclide
 
         Args:
@@ -238,7 +244,7 @@ class ENSDF:
                 res.append(name)
         return res
 
-    def get_indexed_nuclides(self) -> list[tuple[int, int]]:
+    def get_indexed_nuclides(self) -> list[NuclideTuple]:
         """Get all nuclides with corresponding adopted levels datasets.
 
         Returns:
@@ -415,7 +421,13 @@ class BaseRecord:
 
 
 class Record(BaseRecord):
-    def __init__(self, dataset, record, comments: list | None, xref: list | None):
+    def __init__(
+        self,
+        dataset,
+        record,
+        comments: list[str] | None,
+        xref: list[str] | None,
+    ):
         self.prop = dict()
         self.record = record
         self.dataset = dataset
@@ -847,7 +859,7 @@ class Nuclide:
                 if level.metastable:
                     yield level
 
-    def get_daughters(self) -> Iterator[tuple[tuple[int, int], str]]:
+    def get_daughters(self) -> Iterator[tuple[NuclideTuple, str]]:
         nucid = nucid_from_az((self.mass, self.protons)).strip()
         for nucid_i, name_i in self.ensdf.datasets:
             if name_i.startswith(nucid) and "DECAY" in name_i:

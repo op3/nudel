@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "nudel"
 version = "0.0.1"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 license = "GPL-3.0-or-later"
 license-files = ["COPYING"]
 
@@ -45,10 +45,8 @@ classifiers = [
   "Operating System :: POSIX :: Linux",
   "Operating System :: UNIX",
   "Programming Language :: Python",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Scientific/Engineering",
   "Topic :: Scientific/Engineering :: Physics"
 ]
@@ -78,7 +76,7 @@ nudel = ["py.typed"]
 addopts = "--cov=nudel --verbose --cov-fail-under=77"
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py313"
 line-length = 88
 src = ["nudel", "tests"]
 
@@ -88,5 +86,5 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.pyrefly]
 project-includes = ["nudel/**/*.py"]
 project-excludes = ["nudel/**/*.pyi"]
-python-version = "3.10"
+python-version = "3.13"
 untyped-def-behavior = "check-and-infer-return-any"

@@ -28,9 +28,9 @@ import re
 import time
 import warnings
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TypedDict
 
 import platformdirs
 import pooch
@@ -46,6 +46,27 @@ CURRENT_FILE = DATA_DIR.parent / "current"
 
 _VERSION_RE = re.compile(r"^ensdf_(\d{6})\.zip$")
 _USER_AGENT = "nudel/0.0.1 (https://github.com/op3/nudel)"
+
+
+class ManifestDistribution(TypedDict, total=False):
+    year: str
+    files: list[str]
+
+
+class ManifestLatest(TypedDict, total=False):
+    files: list[str]
+
+
+class Manifest(TypedDict, total=False):
+    distributions: list[ManifestDistribution]
+    latest: ManifestLatest
+
+
+class _Meta(TypedDict):
+    version: str
+    url: str
+    sha256: str
+    downloaded_at: str
 
 
 def get_url(version: str) -> str:
@@ -65,7 +86,7 @@ def get_url(version: str) -> str:
     return f"{ENSDF_BASE}/dist{version[:2]}/ensdf_{version}.zip"
 
 
-def _get_api_manifest(*, refresh: bool = False) -> dict[str, Any]:
+def _get_api_manifest(*, refresh: bool = False) -> Manifest:
     """Return the parsed NNDC ``files.json`` manifest, with TTL caching.
 
     The manifest is cached at :data:`CACHE_DIR` ``/ "files.json"`` for
@@ -91,7 +112,7 @@ def _get_api_manifest(*, refresh: bool = False) -> dict[str, Any]:
             ENSDF_API, headers={"User-Agent": _USER_AGENT}, timeout=30
         )
         response.raise_for_status()
-        manifest = response.json()
+        manifest: Manifest = response.json()
     except Exception:
         if cache_file.exists():
             warnings.warn(
@@ -146,8 +167,8 @@ def resolve_version(version: str = "latest", *, refresh: bool = False) -> str:
     """
     if version == "latest":
         manifest = _get_api_manifest(refresh=refresh)
-        latest_files = manifest.get("latest", {}).get("files", [])
-        for fname in latest_files:
+        latest = manifest.get("latest")
+        for fname in latest.get("files", []) if latest is not None else []:
             match = _VERSION_RE.match(fname)
             if match:
                 return match.group(1)
@@ -210,11 +231,11 @@ def fetch(version: str = "latest", *, refresh: bool = False) -> Path:
     data_path.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(zip_path) as zf:
         zf.extractall(data_path)
-    meta = {
+    meta: _Meta = {
         "version": resolved,
         "url": url,
         "sha256": sha,
-        "downloaded_at": datetime.now(timezone.utc).isoformat(),
+        "downloaded_at": datetime.now(UTC).isoformat(),
     }
     (data_path / "meta.json").write_text(json.dumps(meta, indent=2))
     zip_path.unlink()
