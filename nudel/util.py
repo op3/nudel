@@ -26,7 +26,11 @@ import re
 import warnings
 from functools import cache
 from math import isnan
-from typing import NamedTuple
+from typing import NamedTuple, Self
+
+type NuclideTuple = tuple[int, int]
+type NuclideKey = tuple[int, int | None]
+type DatasetKey = tuple[NuclideKey, str]
 
 ELEMENTS = [
     "Nn",
@@ -335,7 +339,7 @@ ALT_CHARS2 = {
 }
 
 
-def az_from_nucid(nucid: str) -> tuple[int, int | None]:
+def az_from_nucid(nucid: str) -> NuclideKey:
     m = re.compile(r"(\d+)([A-Za-z]*)?").search(nucid)
     if m is None:
         return int(nucid), None
@@ -719,6 +723,7 @@ class Quantity:
         if self.unit.dimension != unit.dimension:
             raise TypeError("Mismatching Dimensions")
         res = self * (self.unit.basis / unit.basis)
+        assert res is not None
         res.unit = unit
         # TODO: Determine number of decimal places/exponent more intelligently
         #   (already after multiplication)
@@ -728,13 +733,13 @@ class Quantity:
             res.exponent = int(self.exponent + math.log10(self.unit.basis / unit.basis))
         return res
 
-    def __add__(self, other):
+    def __add__(self, other) -> Self | None:
         if isinstance(other, (int, float)):
             s = copy.copy(self)
             s.val += other
             return s
 
-    def __mul__(self, other):
+    def __mul__(self, other) -> Self | None:
         # TODO: Update number of decimal places/exponent
         if isinstance(other, (int, float)):
             s = copy.copy(self)

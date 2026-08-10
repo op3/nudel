@@ -26,10 +26,22 @@ import json
 import os
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import TypedDict, override
 
 import platformdirs
 
-from .util import az_from_nucid
+from .util import DatasetKey, NuclideKey, NuclideTuple, az_from_nucid
+
+
+class _IndexEntry(TypedDict):
+    nucleus: list[int | None]
+    name: str
+    offset: int
+
+
+class _IndexFile(TypedDict, total=False):
+    version: str | None
+    entries: list[_IndexEntry]
 
 
 class ENSDFIndexError(RuntimeError):
@@ -37,18 +49,18 @@ class ENSDFIndexError(RuntimeError):
 
 
 class ENSDFProvider(ABC):
-    index: dict[tuple[tuple[int, int | None], str], int]
-    adopted_levels: dict[tuple[int, int], str]
+    index: dict[DatasetKey, int]
+    adopted_levels: dict[NuclideTuple, str]
 
     @abstractmethod
-    def get_dataset(self, nucleus: tuple[int, int | None], name: str) -> str:
+    def get_dataset(self, nucleus: NuclideKey, name: str) -> str:
         """
         returns a raw ENSDF dataset
         """
         raise NotImplementedError
 
     @abstractmethod
-    def get_adopted_levels(self, nucleus: tuple[int, int]) -> str:
+    def get_adopted_levels(self, nucleus: NuclideTuple) -> str:
         """
         returns the raw ADOPTED LEVELS[, GAMMAS] dataset of a nucleus
         """
@@ -89,9 +101,9 @@ class ENSDFFileProvider(ENSDFProvider):
             self.version = _fetch.current_version() or "unknown"
 
         self.cachedir = platformdirs.user_cache_path("nudel")
-        self.index: dict[tuple[tuple[int, int | None], str], int] = {}
+        self.index: dict[DatasetKey, int] = {}
         self.gen_index()
-        self.adopted_levels: dict[tuple[int, int], str] = {}
+        self.adopted_levels: dict[NuclideTuple, str] = {}
         for nucleus, name in self.index:
             if "ADOPTED LEVELS" in name:
                 mass, Z = nucleus
@@ -109,28 +121,28 @@ class ENSDFFileProvider(ENSDFProvider):
 
     @staticmethod
     def _serialize_index(
-        index: dict[tuple[tuple[int, int | None], str], int],
+        index: dict[DatasetKey, int],
         version: str | None,
     ) -> str:
-        return json.dumps(
-            {
-                "version": version,
-                "entries": [
-                    {"nucleus": list(nucleus), "name": name, "offset": offset}
-                    for (nucleus, name), offset in index.items()
-                ],
-            }
-        )
+        obj: _IndexFile = {
+            "version": version,
+            "entries": [
+                {"nucleus": list(nucleus), "name": name, "offset": offset}
+                for (nucleus, name), offset in index.items()
+            ],
+        }
+        return json.dumps(obj)
 
     @staticmethod
     def _deserialize_index(
         text: str,
-    ) -> dict[tuple[tuple[int, int | None], str], int]:
-        data = json.loads(text)
-        index: dict[tuple[tuple[int, int | None], str], int] = {}
+    ) -> dict[DatasetKey, int]:
+        data: _IndexFile = json.loads(text)
+        index: dict[DatasetKey, int] = {}
         for entry in data.get("entries", []):
             mass, Z = entry["nucleus"]
-            index[((mass, Z), entry["name"])] = int(entry["offset"])
+            assert mass is not None
+            index[((mass, Z), entry["name"])] = entry["offset"]
         return index
 
     def gen_index(self) -> None:
@@ -160,7 +172,8 @@ class ENSDFFileProvider(ENSDFProvider):
         index_file.parent.mkdir(parents=True, exist_ok=True)
         index_file.write_text(self._serialize_index(self.index, self.version))
 
-    def get_dataset(self, nucleus: tuple[int, int | None], name: str) -> str:
+    @override
+    def get_dataset(self, nucleus: NuclideKey, name: str) -> str:
         """Return the raw ENSDF dataset for ``(nucleus, name)``.
 
         Raises:
@@ -185,7 +198,8 @@ class ENSDFFileProvider(ENSDFProvider):
                 res += line
         return res
 
-    def get_adopted_levels(self, nucleus: tuple[int, int]) -> str:
+    @override
+    def get_adopted_levels(self, nucleus: NuclideTuple) -> str:
         return self.get_dataset(nucleus, self.adopted_levels[nucleus])
 
 
@@ -198,16 +212,18 @@ class ENSDFInMemoryProvider(ENSDFProvider):
     without any real ENSDF data on disk.
     """
 
-    def __init__(self, data: dict[tuple[tuple[int, int | None], str], str]) -> None:
+    def __init__(self, data: dict[DatasetKey, str]) -> None:
         self.data = data
         self.index = {key: 0 for key in data}
-        self.adopted_levels: dict[tuple[int, int], str] = {}
+        self.adopted_levels: dict[NuclideTuple, str] = {}
         for (mass, Z), name in self.index:
             if Z is not None and "ADOPTED LEVELS" in name:
                 self.adopted_levels[(mass, Z)] = name
 
-    def get_dataset(self, nucleus: tuple[int, int | None], name: str) -> str:
+    @override
+    def get_dataset(self, nucleus: NuclideKey, name: str) -> str:
         return self.data[nucleus, name]
 
-    def get_adopted_levels(self, nucleus: tuple[int, int]) -> str:
+    @override
+    def get_adopted_levels(self, nucleus: NuclideTuple) -> str:
         return self.get_dataset(nucleus, self.adopted_levels[nucleus])

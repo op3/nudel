@@ -62,7 +62,7 @@ export ENSDF_PATH=/path/to/ensdf
 
 ## Requirements
 
-- python>=3.10
+- python>=3.13
 
 Runtime dependencies (`platformdirs`, `pooch`) are installed automatically.
 For unit tests: `pytest`, `pytest-cov`.
