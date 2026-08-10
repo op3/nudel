@@ -336,7 +336,10 @@ ALT_CHARS2 = {
 
 
 def az_from_nucid(nucid: str) -> tuple[int, int | None]:
-    mass, nucleus = re.compile(r"(\d+)([A-Za-z]*)?").search(nucid).groups()
+    m = re.compile(r"(\d+)([A-Za-z]*)?").search(nucid)
+    if m is None:
+        return int(nucid), None
+    mass, nucleus = m.groups()
     if len(mass) > 3:
         return int(nucid[:3]), int(nucid[3:]) + 100
     try:
@@ -478,9 +481,14 @@ class Quantity:
         # Input cleanup (limited character set only)
         if val is not None:
             val = alt_char_float(val)
-        self.val, self.pm, self.plus, self.minus = [float("nan")] * 4
-        self.upper_bound, self.lower_bound = [float("nan")] * 2
-        self.upper_bound_inclusive, self.lower_bound_inclusive = [None] * 2
+        self.val: float = float("nan")
+        self.pm: float = float("nan")
+        self.plus: float = float("nan")
+        self.minus: float = float("nan")
+        self.upper_bound: float = float("nan")
+        self.lower_bound: float = float("nan")
+        self.upper_bound_inclusive: bool | None = None
+        self.lower_bound_inclusive: bool | None = None
         self.exponent = 0
         self.decimals = 0
         self.sign = Sign.UNSPECIFIED
@@ -490,21 +498,25 @@ class Quantity:
         self.questionable = False
         self.assumed = False
 
-        self.unit = None
-        self.named = None
-        self.offset_l, self.offset_r, self.offset = [None] * 3
-        self.reference = None
-        self.comment = None
+        self.unit: Unit | None = None
+        self.named: str | None = None
+        self.offset_l: str | None = None
+        self.offset_r: str | None = None
+        self.offset: str | None = None
+        self.reference: list[str] | None = None
+        self.comment: str | None = None
         if val is not None:
             self._parse_input()
         if not self.unit and default_unit:
             self.set_unit(default_unit)
 
-    def _parse_input(self, val: str | None = None):
+    def _parse_input(self, val: str | None = None) -> None:
         if val is not None:
             val = val.replace("|?", "?").replace("|@", "∞").strip()
         else:
             val = self.input
+        if val is None:
+            return
 
         ref = self.ref_pattern.match(val)
         if ref:
@@ -672,13 +684,14 @@ class Quantity:
         if frags["exponent"]:
             qty.exponent = int(frags["exponent"][1:])
 
-        main = None
+        main: float | None = None
         if frags["leading_digits"] or frags["decimals"]:
             main = float(frags["sign"] + frags["leading_digits"] + frags["decimals"])
             main *= 10**qty.exponent
             if frags["decimals"]:
                 qty.decimals = len(frags["decimals"].strip(" ."))
-        qty.val = main
+        if main is not None:
+            qty.val = main
 
         if frags["unc"]:
             qty.pm = qty._parse_uncertainty(frags["unc"].strip())
@@ -701,6 +714,8 @@ class Quantity:
         """
         if not isinstance(unit, Unit):
             unit = get_unit(unit)
+        if self.unit is None:
+            raise TypeError("Quantity has no unit")
         if self.unit.dimension != unit.dimension:
             raise TypeError("Mismatching Dimensions")
         res = self * (self.unit.basis / unit.basis)
