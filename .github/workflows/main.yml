@@ -13,7 +13,7 @@ env:
   ENSDF_VERSION: "260805"
 
 jobs:
-  lint:
+  formal-checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -21,13 +21,6 @@ jobs:
       - run: uv sync --extra dev --extra test
       - run: uv run ruff check nudel tests
       - run: uv run ruff format --check nudel tests
-
-  type:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v9.0.0
-      - run: uv sync --extra dev --extra test
       - run: uv run pyrefly check nudel
 
   test:
