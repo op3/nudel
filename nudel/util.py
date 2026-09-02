@@ -702,10 +702,14 @@ class Quantity:
 
         return qty
 
-    def _parse_uncertainty(self, unc) -> float:
+    def _parse_uncertainty(self, unc: str) -> float:
         if "∞" in unc:
             return float("inf")
-        return abs(int(unc)) * 10 ** (self.exponent - self.decimals)
+        exp = self.exponent - self.decimals
+        value = abs(int(unc)) * 10 ** max(exp, 0)
+        if exp < 0:
+            return value / 10**-exp
+        return float(value)
 
     def set_unit(self, unit_symbol: str):
         self.unit = get_unit(unit_symbol)
