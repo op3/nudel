@@ -1,6 +1,6 @@
 #  SPDX-License-Identifier: GPL-3.0+
 #
-# Copyright © 2019 O. Papst.
+# Copyright © 2026 O. Papst.
 #
 # This file is part of nudel.
 #
