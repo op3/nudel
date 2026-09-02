@@ -459,9 +459,28 @@ class Record(BaseRecord):
         entry = entry.strip()
         if not entry:
             return
+        # Branch order matters: most-specific operators and the blank-mandated
+        # word operators first, blankless catch-alls (~, %, ?) last, so that
+        # e.g. "T GT ~3.5" is not mangled by the "~" or "%" branches.
         if "=" in entry:
             quant, value = entry.split("=", maxsplit=1)
             self.prop[quant.strip()] = value.strip()
+            return
+        for symb in ["<", ">"]:
+            if symb in entry:
+                quant, value = entry.split(symb, maxsplit=1)
+                self.prop[quant.strip()] = symb + value.strip()
+                return
+        for abbr in ["GT", "LT", "GE", "LE", "AP", "CA", "SY"]:
+            if f" {abbr} " in entry:
+                quant, abbr, value = entry.split(" ", maxsplit=2)
+                self.prop[quant.strip()] = f"{value.strip()} {abbr}"
+                return
+        if "~" in entry:
+            quant, value = entry.split("~", maxsplit=1)
+            if not quant.strip() or not value.strip():
+                raise ValueError(f"Cannot process property: '{entry}'.")
+            self.prop[quant.strip()] = "~" + value.strip()
             return
         if entry.startswith("%"):
             m = re.match(r"([A-Z]+)(.*)", entry[1:])
@@ -472,16 +491,6 @@ class Record(BaseRecord):
             if symb in entry:
                 quant, value = entry.split(symb, maxsplit=1)
                 self.prop[quant.strip()] = f"{value.strip()} AP"
-                return
-        for symb in ["<", ">"]:
-            if symb in entry:
-                quant, value = entry.split(symb, maxsplit=1)
-                self.prop[quant.strip()] = symb + value.strip()
-                return
-        for abbr in ["GT", "LT", "GE", "LE", "AP", "CA", "SY"]:
-            if f" {abbr} " in entry:
-                quant, abbr, value = entry.split(" ", maxsplit=2)
-                self.prop[quant.strip()] = f"{value.strip()} {abbr}"
                 return
         if entry[-1] == "?":
             self.prop[entry[:-1]] = "?"
