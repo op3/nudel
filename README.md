@@ -83,7 +83,7 @@ Notebooks with usage examples can be found in the [examples/notebooks](examples/
 
 ## License
 
-Copyright © 2019
+Copyright © 2026
 
 O. Papst
 
