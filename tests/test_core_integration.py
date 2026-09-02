@@ -29,11 +29,13 @@ to end without touching the filesystem or network.
 
 from __future__ import annotations
 
+import math
 from unittest.mock import patch
 
 import pytest
-from nudel.core import ENSDF, BetaRecord, Dataset, GammaRecord, Nuclide
+from nudel.core import ENSDF, BetaRecord, Dataset, GammaRecord, Nuclide, Record
 from nudel.provider import ENSDFInMemoryProvider
+from nudel.util import Quantity
 
 from tests.data.synthetic import DATASETS
 
@@ -353,5 +355,119 @@ def test_percent_branching_without_equals_routed_to_decay_ratio():
         assert ds.levels[0].decay_ratio["A"].val == 50.0
         assert ds.levels[0].decay_ratio["EC"].val == 50.0
         assert "A" not in ds.levels[0].prop or ds.levels[0].prop.get("A") != "50 AP"
+    finally:
+        ENSDF.active_ensdf = None
+
+
+def test_parse_entry_tilde_operator_normalizes_to_leading_placement():
+    rec = Record(None, None, None, None)
+    rec.parse_entry("T~3.5")
+    assert rec.prop["T"] == "~3.5"
+    q = Quantity(rec.prop["T"])
+    assert q.val == pytest.approx(3.5)
+    assert q.approximate is True
+
+
+def test_parse_entry_tilde_operator_for_percent_decay_modes():
+    modes = {"%A~50": "%A", "%B+~20": "%B+"}
+    for entry, key in modes.items():
+        rec = Record(None, None, None, None)
+        rec.parse_entry(entry)
+        assert key in rec.prop
+        q = Quantity(rec.prop[key], default_unit="%")
+        assert q.val == pytest.approx(50.0 if key == "%A" else 20.0)
+        assert q.approximate is True
+
+
+def test_parse_entry_tilde_with_questionable_flag():
+    rec = Record(None, None, None, None)
+    rec.parse_entry("T~3.5?")
+    assert rec.prop["T"] == "~3.5?"
+    q = Quantity(rec.prop["T"])
+    assert q.val == pytest.approx(3.5)
+    assert q.approximate is True
+    assert q.questionable is True
+
+
+def test_parse_entry_tilde_without_quantity_name_raises():
+    rec = Record(None, None, None, None)
+    with pytest.raises(ValueError):
+        rec.parse_entry("~ 3.5")
+
+
+def test_parse_entry_tilde_does_not_shadow_existing_splitters():
+    rec = Record(None, None, None, None)
+    rec.parse_entry("XREF=GI~")
+    assert rec.prop["XREF"] == "GI~"
+    rec.parse_entry("RI<~10")
+    assert rec.prop["RI"] == "<~10"
+    rec.parse_entry("T|? 3.5")
+    assert rec.prop["T"] == "3.5 AP"
+    assert Quantity(rec.prop["T"]).approximate is True
+
+
+def test_parse_entry_tilde_with_word_operator():
+    rec = Record(None, None, None, None)
+    rec.parse_entry("T GT ~3.5")
+    assert rec.prop["T"] == "~3.5 GT"
+    q = Quantity(rec.prop["T"])
+    assert math.isnan(q.val)
+    assert q.lower_bound == pytest.approx(3.5)
+    assert q.lower_bound_inclusive is False
+    assert q.approximate is True
+
+
+@pytest.mark.parametrize(
+    ("entry", "key", "value"),
+    [
+        ("XREF=GI~", "XREF", "GI~"),
+        ("RI<~10", "RI", "<~10"),
+        ("T GT ~3.5", "T", "~3.5 GT"),
+        ("%A~50", "%A", "~50"),
+        ("%B+~20", "%B+", "~20"),
+        ("T~3.5?", "T", "~3.5?"),
+        ("T|? 3.5", "T", "3.5 AP"),
+        ("%A50", "%A", "50 AP"),
+    ],
+)
+def test_parse_entry_operator_precedence(entry, key, value):
+    rec = Record(None, None, None, None)
+    rec.parse_entry(entry)
+    assert rec.prop == {key: value}
+
+
+@pytest.mark.parametrize("entry", ["T~", "%A~"])
+def test_parse_entry_tilde_empty_value_raises(entry):
+    rec = Record(None, None, None, None)
+    with pytest.raises(ValueError):
+        rec.parse_entry(entry)
+
+
+def test_level_percent_decay_modes_approximate_from_real_data_form():
+    nucid = "234BK"
+    dsid = "ADOPTED LEVELS"
+    dataset = (
+        f"{nucid}    {dsid}"
+        + " " * (39 - len(dsid))
+        + " " * 26
+        + "202601\n"
+        + f"{nucid}  H TYP=FUL$AUT=Test$DAT=2026$".ljust(80)
+        + "\n"
+        + f"{nucid}  L       0.0     0+".ljust(80)
+        + "\n"
+        + f"{nucid}2 L %A~50$%EC~50".ljust(80)
+        + "\n"
+    )
+    prov = ENSDFInMemoryProvider({((234, 97), dsid): dataset})
+    ensdf = ENSDF(provider=prov)
+    ENSDF.active_ensdf = ensdf
+    try:
+        ds = ensdf.get_dataset((234, 97), dsid)
+        for mode in ("A", "EC"):
+            assert mode in ds.levels[0].decay_ratio
+            q = ds.levels[0].decay_ratio[mode]
+            assert q.val == pytest.approx(50.0)
+            assert q.approximate is True
+        assert "A" not in ds.levels[0].prop
     finally:
         ENSDF.active_ensdf = None
