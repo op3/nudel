@@ -19,6 +19,7 @@
 
 """Tests for nudel.util.Quantity"""
 
+from decimal import Decimal
 from math import isclose, isnan
 
 import pytest
@@ -1059,3 +1060,49 @@ def test_quantity_cmp():
     assert q0 >= 0.0
     assert q0 == 0.0
     assert q0 != 1.0
+
+
+def exact_uncertainty(unc: int, exponent: int, decimals: int) -> float:
+    """Exactly-rounded float value of unc * 10**(exponent - decimals)"""
+    return float(Decimal(unc).scaleb(exponent - decimals))
+
+
+def test_quantity_pm_single_rounding_decimals():
+    q = Quantity("50.0 3")
+    assert q.pm == exact_uncertainty(3, 0, 1)
+    assert q.pm == 0.3
+
+
+def test_quantity_pm_single_rounding_exponent():
+    q = Quantity("1.25E-3 13")
+    assert q.pm == exact_uncertainty(13, -3, 2)
+    assert q.pm == 0.00013
+
+
+def test_quantity_plus_single_rounding():
+    q = Quantity("50.0 +3-1")
+    assert q.plus == exact_uncertainty(3, 0, 1)
+    assert q.plus == 0.3
+    assert q.minus == exact_uncertainty(1, 0, 1)
+    assert q.minus == 0.1
+
+
+def test_quantity_pm_exactly_representable():
+    q = Quantity("50.0 1")
+    assert q.pm == exact_uncertainty(1, 0, 1)
+    assert q.pm == 0.1
+
+    q = Quantity("50.0 5")
+    assert q.pm == exact_uncertainty(5, 0, 1)
+    assert q.pm == 0.5
+
+    q = Quantity("50.0 -5+8")
+    assert q.minus == exact_uncertainty(5, 0, 1)
+    assert q.minus == 0.5
+    assert q.plus == exact_uncertainty(8, 0, 1)
+    assert q.plus == 0.8
+
+
+def test_quantity_pm_infinity():
+    q = Quantity("50.0 ∞")
+    assert q.pm == float("inf")
