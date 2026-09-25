@@ -19,12 +19,16 @@
 
 """Python interface for ENSDF nuclear data"""
 
+from __future__ import annotations
+
+import contextlib
 import logging
 import re
 import warnings
-from collections.abc import Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from datetime import datetime
+from types import TracebackType
 from typing import ClassVar
 
 from .provider import (
@@ -171,11 +175,11 @@ REFERENCE_FIELDS = (
 
 
 class ENSDF:
-    active_ensdf: ClassVar["ENSDF | None"] = None
+    active_ensdf: ClassVar[ENSDF | None] = None
 
     def __init__(
         self,
-        provider: "ENSDFProvider | None" = None,
+        provider: ENSDFProvider | None = None,
         *,
         version: str = "latest",
     ):
@@ -192,7 +196,7 @@ class ENSDF:
         )
         self._old_active: ENSDF | None = None
 
-    def get_dataset(self, nuclide: NuclideKey, name: str) -> "Dataset":
+    def get_dataset(self, nuclide: NuclideKey, name: str) -> Dataset:
         """Returns specified dataset.
 
         Args:
@@ -212,7 +216,7 @@ class ENSDF:
             self.datasets[(nuclide, name)] = dataset
         return dataset
 
-    def get_adopted_levels(self, nuclide: NuclideTuple) -> "Dataset":
+    def get_adopted_levels(self, nuclide: NuclideTuple) -> Dataset:
         """Get adopted levels dataset of a nuclide
 
         Args:
@@ -253,19 +257,26 @@ class ENSDF:
         """
         return list(self.provider.adopted_levels.keys())
 
-    def __enter__(self):
+    def __enter__(self) -> ENSDF:
         self._old_active = ENSDF.active_ensdf
         ENSDF.active_ensdf = self
+        return self
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         ENSDF.active_ensdf = self._old_active
         self._old_active = None
 
 
 class Dataset:
-    def __init__(self, dataset_plain: str):
-        self.jpi_index = dict()
-        self.ensdf = get_active_ensdf()
+    def __init__(self, dataset_plain: str) -> None:
+        # Jπ lookup: (spin value, parity) -> levels that declare it
+        self.jpi_index: dict[tuple[float | None, str | None], list[LevelRecord]] = {}
+        self.ensdf: ENSDF = get_active_ensdf()
         self.header, *self.raw = dataset_plain.split("\n")
         self.nucid = self.header[0:5].strip()
         self.mass, self.protons = az_from_nucid(self.nucid)
@@ -273,38 +284,48 @@ class Dataset:
         self.dataset_id = self.header[9:39].strip()
         self.dataset_ref = self.header[39:65].strip()
         self.publication = self.header[65:74].strip()
-        try:
+        self.date: datetime | None = None
+        with contextlib.suppress(ValueError):
             self.date = datetime.strptime(self.header[74:80].strip(), "%Y%m")
-        except ValueError:
-            self.date = None
-        self.records = []
-        self.levels = []
-        self.history = {}
-        self.qrecords = []
-        self.normalization_records = []
-        self.comments = []
-        self.parents = []
-        self.references = []
-        self.cross_references = {}
+        self.records: list[BaseRecord] = []
+        self.levels: list[LevelRecord] = []
+        self.history: dict[str, str] = {}
+        self.qrecords: list[QValueRecord] = []
+        self.normalization_records: list[NormalizationRecord] = []
+        self.comments: list[list[str]] = []
+        self.parents: list[ParentRecord] = []
+        self.references: list[ReferenceRecord] = []
+        self.cross_references: dict[str, CrossReferenceRecord] = {}
         self._parse_dataset()
 
-    def _add_record(self, record, comments, xref, level=None):
+    def _add_record(
+        self,
+        record: list[str],
+        comments: list[list[str]] | None,
+        xref: list[str] | None,
+        level: LevelRecord | None = None,
+    ) -> BaseRecord:
         rec_type = get_record_type(record)
         rec = rec_type(self, record, comments, xref, level)
         self.records.append(rec)
         return rec
 
-    def _add_level(self, record, comments, xref):
+    def _add_level(
+        self,
+        record: list[str],
+        comments: list[list[str]] | None,
+        xref: list[str] | None,
+    ) -> LevelRecord:
         lvl = LevelRecord(self, record, comments, xref)
         self.levels.append(lvl)
         lvl.state_num = len(self.levels) - 1
         return lvl
 
-    def _parse_dataset(self):
-        comments = []
-        record = []
-        xref = []
-        level = None
+    def _parse_dataset(self) -> None:
+        comments: list[list[str]] = []
+        record: list[str] = []
+        xref: list[str] = []
+        level: LevelRecord | None = None
         history = ""
         header = True
 
@@ -376,15 +397,6 @@ class Dataset:
                 logger.error("Failed to parse record: %r", record)
                 raise
 
-            # if line[7].lower() in "bagel" and line[6].lower() not in "ct":
-            #    if line[5] == " " and record:
-            #        self._add_record(record, comments)
-            #        comments = []
-            #        record = []
-            #    if line[6].lower() not in "ct":
-            #        record.append(line)
-            # if line[6].lower() not in "ct":
-            #    comments.append(line)
         try:
             if record:
                 if record[0][7] == "L":
@@ -403,14 +415,12 @@ class Dataset:
                 # TODO: Maybe wrong linebreak?
                 pass
 
-    def add_jpi(self, level):
+    def add_jpi(self, level: LevelRecord) -> int | None:
         for ang_mom in level.ang_mom:
-            if (ang_mom.val, ang_mom.parity) in self.jpi_index:
-                self.jpi_index[(ang_mom.val, ang_mom.parity)].append(level)
-            else:
-                self.jpi_index[(ang_mom.val, ang_mom.parity)] = [level]
+            self.jpi_index.setdefault((ang_mom.val, ang_mom.parity), []).append(level)
         if level.ang_mom:
             return len(self.jpi_index[(ang_mom.val, ang_mom.parity)])
+        return None
 
     def __repr__(self):
         return f"<{self.__class__.__name__}: {self.nucid} ({self.dataset_id})>"
@@ -421,14 +431,22 @@ class BaseRecord:
 
 
 class Record(BaseRecord):
+    # Multi-line records pass a list of lines; single-line header records
+    # (Parent, Normalization) pass the raw line.
+    record: list[str] | str
+
+    prop: dict[str, str]
+    xref: dict[str, XReference]
+    comments: list[GeneralCommentRecord]
+
     def __init__(
         self,
-        dataset,
-        record,
-        comments: list[str] | None,
+        dataset: Dataset,
+        record: list[str] | str,
+        comments: list[list[str]] | None,
         xref: list[str] | None,
     ):
-        self.prop = dict()
+        self.prop = {}
         self.record = record
         self.dataset = dataset
         self.comments = []
@@ -438,7 +456,7 @@ class Record(BaseRecord):
             for comment in comments:
                 self.comments.append(GeneralCommentRecord(dataset, comment))
 
-    def parse_xref(self):
+    def parse_xref(self) -> None:
         self.xref = {}
         if not self._xref:
             return
@@ -455,7 +473,7 @@ class Record(BaseRecord):
                     self.dataset.cross_references[char],
                 )
 
-    def parse_entry(self, entry):
+    def parse_entry(self, entry: str) -> None:
         entry = entry.strip()
         if not entry:
             return
@@ -497,14 +515,19 @@ class Record(BaseRecord):
             return
         raise ValueError(f"Cannot process property: '{entry}'.")
 
-    def load_prop(self, lines):
+    def load_prop(self, lines: Iterable[str]) -> None:
         for line in lines:
             for entry in line[9:].split("$"):
                 self.parse_entry(entry)
 
 
 class QValueRecord(BaseRecord):
-    def __init__(self, dataset, line):
+    q_beta_minus: Quantity
+    neutron_separation: Quantity
+    proton_separation: Quantity
+    alpha_decay: Quantity
+
+    def __init__(self, dataset: Dataset, line: str) -> None:
         self.prop = slice_fields(line, QVALUE_FIELDS)
         self.prop["Q-"] += " " + self.prop["DQ-"]
         self.prop["N"] += " " + self.prop["DN"]
@@ -525,13 +548,17 @@ class QValueRecord(BaseRecord):
 
 
 class CrossReferenceRecord(BaseRecord):
-    def __init__(self, dataset, line):
+    parent_dataset: Dataset
+    dssym: str
+    dsid: str
+
+    def __init__(self, dataset: Dataset, line: str) -> None:
         self.parent_dataset = dataset
         fields = slice_fields(line, XREF_FIELDS)
         self.dssym = fields["dssym"]
         self.dsid = fields["dsid"]
 
-    def get_dataset(self) -> "Dataset":
+    def get_dataset(self) -> Dataset:
         return get_active_ensdf().get_dataset(self.parent_dataset.nucleus, self.dsid)
 
     def __repr__(self):
@@ -539,7 +566,11 @@ class CrossReferenceRecord(BaseRecord):
 
 
 class GeneralCommentRecord(BaseRecord):
-    def __init__(self, dataset, comment):
+    dataset: Dataset
+    # Raw comment/continuation lines, exactly as found in the dataset.
+    comment: list[str]
+
+    def __init__(self, dataset: Dataset, comment: list[str]) -> None:
         self.dataset = dataset
         self.comment = comment
         # self.continuation = line[5] not in ["1", " "]
@@ -556,7 +587,12 @@ class GeneralCommentRecord(BaseRecord):
 
 
 class ParentRecord(Record):
-    def __init__(self, dataset, record):
+    energy: Quantity
+    ang_mom: list[AngularMoment]
+    half_life: Quantity
+    q_value: Quantity
+
+    def __init__(self, dataset: Dataset, record: str) -> None:
         super().__init__(dataset, record, None, None)
         self.prop.update(slice_fields(record, PARENT_FIELDS))
         self.prop["E"] += " " + self.prop["DE"]
@@ -571,7 +607,11 @@ class ParentRecord(Record):
 
 
 class NormalizationRecord(Record):
-    def __init__(self, dataset, record):
+    branching_ratio: Quantity
+    rel_intensity_multiplier: Quantity
+    trans_intensity_multiplier: Quantity
+
+    def __init__(self, dataset: Dataset, record: str) -> None:
         super().__init__(dataset, record, None, None)
         self.prop.update(slice_fields(record, NORMALIZATION_FIELDS))
         self.prop["NR"] += " " + self.prop["DNR"]
@@ -587,7 +627,28 @@ class NormalizationRecord(Record):
 
 
 class LevelRecord(Record):
-    def __init__(self, dataset, record, comments, xref):
+    energy: Quantity
+    ang_mom: list[AngularMoment]
+    half_life: Quantity
+    g_factor: Quantity
+    questionable: bool
+    expected: bool
+    metastable: bool
+    state_num: int | None
+    decays: list[GammaRecord]
+    populating: list[GammaRecord]
+    attr: dict[str, Quantity]
+    decay_ratio: dict[str, Quantity]
+    spec_strength: list[Quantity]
+    index: int | None
+
+    def __init__(
+        self,
+        dataset: Dataset,
+        record: list[str],
+        comments: list[list[str]] | None,
+        xref: list[str] | None,
+    ) -> None:
         super().__init__(dataset, record, comments, xref)
         self.prop.update(slice_fields(record[0], LEVEL_FIELDS))
         self.prop["Q"] = record[0][79].strip()
@@ -596,19 +657,19 @@ class LevelRecord(Record):
         self.load_prop(record[1:])
 
         self.state_num = None
-        self.decays = []
-        self.populating = []
+        self.decays: list[GammaRecord] = []
+        self.populating: list[GammaRecord] = []
 
-        self.attr = dict()
+        self.attr = {}
         self.energy = Quantity(self.prop["E"], "KEV")
         self.ang_mom = ang_mom_parser(self.prop["J"])
         self.half_life = Quantity(self.prop["T"])
         self.questionable = self.prop["Q"] == "?"
         self.expected = self.prop["Q"] == "S"
         self.g_factor = Quantity(self.prop.get("G", ""))
-        self.metastable = self.prop["MS"] and self.prop["MS"][0] == "M"
+        self.metastable = self.prop["MS"][:1] == "M"
 
-        self.decay_ratio = dict()
+        self.decay_ratio = {}
         for k, v in self.prop.items():
             if len(k) == 2 and k[0] == "B":
                 self.attr[k] = Quantity(v)
@@ -647,13 +708,32 @@ class LevelRecord(Record):
 
 
 class DecayRecord(Record):
-    def __init__(self, dataset, record, comments, xref, dest_level):
+    dest_level: LevelRecord | None
+    energy: Quantity
+    questionable: bool
+    expected: bool
+
+    def __init__(
+        self,
+        dataset: Dataset,
+        record: list[str],
+        comments: list[list[str]] | None,
+        xref: list[str] | None,
+        dest_level: LevelRecord | None = None,
+    ) -> None:
         super().__init__(dataset, record, comments, xref)
         self.dest_level = dest_level
 
 
 class BetaRecord(DecayRecord):
-    def __init__(self, dataset, record, comments, xref, dest_level):
+    def __init__(
+        self,
+        dataset: Dataset,
+        record: list[str],
+        comments: list[list[str]] | None,
+        xref: list[str] | None,
+        dest_level: LevelRecord | None = None,
+    ) -> None:
         super().__init__(dataset, record, comments, xref, dest_level)
         self.prop.update(slice_fields(record[0], BETA_FIELDS))
         self.prop["Q"] = record[0][79].strip()
@@ -671,7 +751,14 @@ class BetaRecord(DecayRecord):
 
 
 class ECRecord(DecayRecord):
-    def __init__(self, dataset, record, comments, xref, dest_level):
+    def __init__(
+        self,
+        dataset: Dataset,
+        record: list[str],
+        comments: list[list[str]] | None,
+        xref: list[str] | None,
+        dest_level: LevelRecord | None = None,
+    ) -> None:
         super().__init__(dataset, record, comments, xref, dest_level)
         self.prop.update(slice_fields(record[0], EC_FIELDS))
         self.prop["Q"] = record[0][79].strip()
@@ -691,7 +778,14 @@ class ECRecord(DecayRecord):
 
 
 class AlphaRecord(DecayRecord):
-    def __init__(self, dataset, record, comments, xref, dest_level):
+    def __init__(
+        self,
+        dataset: Dataset,
+        record: list[str],
+        comments: list[list[str]] | None,
+        xref: list[str] | None,
+        dest_level: LevelRecord | None = None,
+    ) -> None:
         super().__init__(dataset, record, comments, xref, dest_level)
         self.prop.update(slice_fields(record[0], ALPHA_FIELDS))
         self.prop["Q"] = record[0][79].strip()
@@ -709,7 +803,17 @@ class AlphaRecord(DecayRecord):
 
 
 class ParticleRecord(DecayRecord):
-    def __init__(self, dataset, record, comments, xref, dest_level):
+    prompt_emission: bool
+    delayed_emission: bool
+
+    def __init__(
+        self,
+        dataset: Dataset,
+        record: list[str],
+        comments: list[list[str]] | None,
+        xref: list[str] | None,
+        dest_level: LevelRecord | None = None,
+    ) -> None:
         super().__init__(dataset, record, comments, xref, dest_level)
         self.prop["D"] = record[0][7]
         self.prop["Particle"] = record[0][8]
@@ -732,7 +836,23 @@ class ParticleRecord(DecayRecord):
 
 
 class GammaRecord(DecayRecord):
-    def __init__(self, dataset, record, comments, xref, orig_level):
+    orig_level: LevelRecord | None
+    dest_level: LevelRecord | None
+    rel_intensity: Quantity
+    intensity: Quantity | None
+    multipolarity: str
+    mixing_ratio: Quantity
+    conversion_coeff: Quantity
+    rel_tot_trans_intensity: Quantity
+
+    def __init__(
+        self,
+        dataset: Dataset,
+        record: list[str],
+        comments: list[list[str]] | None,
+        xref: list[str] | None,
+        orig_level: LevelRecord | None,
+    ) -> None:
         super().__init__(dataset, record, comments, xref, dest_level=None)
         self.orig_level = orig_level
         if self.orig_level:
@@ -770,7 +890,7 @@ class GammaRecord(DecayRecord):
 
         self._determine_dest_level()
 
-    def _determine_dest_level(self):
+    def _determine_dest_level(self) -> None:
         if "FL" in self.prop:
             if self.prop["FL"] == "?":
                 return
@@ -796,16 +916,22 @@ class GammaRecord(DecayRecord):
         except ValueError:
             pass
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        orig, dest = self.orig_level, self.dest_level
+        if orig is None or dest is None:
+            return f"<{self.__class__.__name__}: {self.energy}>"
         return (
             f"<{self.__class__.__name__}: {self.energy}"
-            f"({self.orig_level.energy} {self.orig_level.ang_mom} → "
-            f"{self.dest_level.energy} {self.dest_level.ang_mom})>"
+            f"({orig.energy} {orig.ang_mom} → "
+            f"{dest.energy} {dest.ang_mom})>"
         )
 
 
 class ReferenceRecord(BaseRecord):
-    def __init__(self, dataset, line):
+    prop: dict[str, str]
+    dataset: Dataset
+
+    def __init__(self, dataset: Dataset, line: str) -> None:
         self.prop = slice_fields(line, REFERENCE_FIELDS)
         self.dataset = dataset
 
@@ -817,7 +943,7 @@ class XReference:
     reference: CrossReferenceRecord
 
 
-RECORD_TYPES: dict[str, type] = {
+RECORD_TYPES: dict[str, Callable[..., BaseRecord]] = {
     "X": CrossReferenceRecord,
     "Q": QValueRecord,
     "N": NormalizationRecord,
@@ -829,7 +955,7 @@ RECORD_TYPES: dict[str, type] = {
 }
 
 
-def get_record_type(record):
+def get_record_type(record: list[str]) -> Callable[..., BaseRecord]:
     rtype = record[0][7]
     if rtype in " D" and record[0][8] in "PAN":
         return ParticleRecord
@@ -847,7 +973,7 @@ class Nuclide:
         mass: int,
         protons: int,
         *,
-        ensdf: "ENSDF | None" = None,
+        ensdf: ENSDF | None = None,
         version: str = "latest",
     ):
         self.mass = mass
@@ -855,7 +981,7 @@ class Nuclide:
         self.ensdf = ensdf if ensdf is not None else get_active_ensdf(version=version)
         self.adopted_levels = self.ensdf.get_adopted_levels((mass, protons))
 
-    def get_isomers(self) -> Iterator["LevelRecord"]:
+    def get_isomers(self) -> Iterator[LevelRecord]:
         """Generator that yields ground state and metastable states.
 
         Yields:
@@ -885,8 +1011,8 @@ class Nuclide:
         return f"<{self.__class__.__name__}: {self}>"
 
 
-def rec_bracket_parser(s, i=0):
-    res = []
+def rec_bracket_parser(s: str, i: int = 0) -> tuple[int, list[tuple[str, str | None]]]:
+    res: list[tuple[str, str | None]] = []
     ang_mom = ""
     parity = None
     while i < len(s):
@@ -930,7 +1056,7 @@ def rec_bracket_parser(s, i=0):
     return i, res
 
 
-def ang_mom_parser(ang_mom: str) -> "list[AngularMoment]":
+def ang_mom_parser(ang_mom: str) -> list[AngularMoment]:
     """
     Parse simple angular momement definitions such as 5/2+ or 4,5,6(-).
     More advanced definitions (silently) result in garbage.
@@ -950,7 +1076,7 @@ def _is_simple_range(s: str) -> bool:
     return not any(c in s for c in "(),[]&")
 
 
-def _parse_simple_range(s: str) -> "list[AngularMoment]":
+def _parse_simple_range(s: str) -> list[AngularMoment]:
     if " to " in s:
         start_str, stop_str = s.split(" to ", 1)
     elif " TO " in s:
@@ -988,7 +1114,7 @@ def _parse_simple_range(s: str) -> "list[AngularMoment]":
     return res
 
 
-def ang_mom_to_tuple(ang_mom):
+def ang_mom_to_tuple(ang_mom: str) -> tuple[int, int]:
     if "/" in ang_mom:
         a, b = ang_mom.split("/", 1)
     else:
@@ -996,7 +1122,7 @@ def ang_mom_to_tuple(ang_mom):
     return int(a), int(b)
 
 
-def ang_mom_range_to_tuple(ang_mom):
+def ang_mom_range_to_tuple(ang_mom: str) -> Iterator[tuple[int, int] | str]:
     try:
         if " to " in ang_mom or " TO " in ang_mom:
             start, stop = (
@@ -1018,17 +1144,35 @@ def ang_mom_range_to_tuple(ang_mom):
 
 
 class AngularMoment:
-    def __init__(self, ang_mom, parity=None):
-        self.div = None
-        try:
-            self.ang_mom, self.div = ang_mom
-            self.val = self.ang_mom / self.div
-        except (TypeError, ValueError, ZeroDivisionError):
-            self.ang_mom = ang_mom
-            self.val = None
-        self.parity = parity
+    # Fallback state: ang_mom holds the original input as-is, val stays None.
+    ang_mom: int | str | tuple[int, int]
+    div: int | float | None
+    val: float | None
+    parity: str | None
 
-    def __repr__(self):
+    def __init__(
+        self,
+        ang_mom: tuple[int, int] | int | str,
+        parity: str | None = None,
+    ) -> None:
+        self.parity = parity
+        self.div = None
+        self.val = None
+        if isinstance(ang_mom, tuple) and len(ang_mom) == 2:
+            J, div = ang_mom
+            if isinstance(J, (int, float)) and isinstance(div, (int, float)):
+                self.ang_mom = J
+                self.div = div
+                try:
+                    self.val = J / div
+                except ZeroDivisionError:
+                    # Keep div as given; val stays None.
+                    self.ang_mom = ang_mom
+                    self.val = None
+        else:
+            self.ang_mom = ang_mom
+
+    def __repr__(self) -> str:
         if self.div is not None and self.div != 1:
             J = f"{self.ang_mom}/{self.div}"
         else:
@@ -1037,19 +1181,19 @@ class AngularMoment:
             return f"{J}{self.parity}"
         return J
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         if isinstance(other, AngularMoment):
             return self.ang_mom == other.ang_mom and self.parity == other.parity
-        elif isinstance(other, tuple):
+        if isinstance(other, tuple):
             if self.parity != other[1]:
                 return False
-            if self.div:
-                ang_mom = self.ang_mom / self.div
-                return abs(ang_mom - float(other[0])) < 0.1
+            if self.val is not None:
+                return abs(self.val - float(other[0])) < 0.1
             return self.ang_mom == other[0]
+        return NotImplemented
 
 
-def get_active_ensdf(version: str = "latest") -> "ENSDF":
+def get_active_ensdf(version: str = "latest") -> ENSDF:
     if ENSDF.active_ensdf is None:
         ENSDF.active_ensdf = ENSDF(version=version)
     return ENSDF.active_ensdf

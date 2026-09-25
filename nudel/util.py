@@ -25,8 +25,8 @@ import math
 import re
 import warnings
 from functools import cache
-from math import isnan
-from typing import NamedTuple, Self
+from math import inf, isnan, nan
+from typing import ClassVar, NamedTuple, Self
 
 type NuclideTuple = tuple[int, int]
 type NuclideKey = tuple[int, int | None]
@@ -352,7 +352,7 @@ def az_from_nucid(nucid: str) -> NuclideKey:
         return int(nucid), None
 
 
-def nucid_from_az(nucleus):
+def nucid_from_az(nucleus: NuclideTuple) -> str:
     mass, Z = nucleus
     try:
         if len(ELEMENTS) <= Z and 100 <= Z < 200:
@@ -378,7 +378,7 @@ class Unit(NamedTuple):
     ensdf_symb: str | None
 
 
-Units = [
+Units: list[Unit] = [
     Unit("Ya", Dimension.TIME, 31556926e24, "YY"),
     Unit("Za", Dimension.TIME, 31556926e21, "ZY"),
     Unit("Ea", Dimension.TIME, 31556926e18, "EY"),
@@ -444,6 +444,32 @@ class Quantity:
     possible most of the time, but might not be transitive.
     """
 
+    # Absent values are represented by NaN (or inf for "stable").
+    input: str | None
+    val: float
+    pm: float
+    plus: float
+    minus: float
+    upper_bound: float
+    lower_bound: float
+    upper_bound_inclusive: bool | None
+    lower_bound_inclusive: bool | None
+    exponent: int
+    decimals: int
+    sign: Sign
+    approximate: bool
+    calculated: bool
+    from_systematics: bool
+    questionable: bool
+    assumed: bool
+    unit: Unit | None
+    named: str | None
+    offset_l: str | None
+    offset_r: str | None
+    offset: str | None
+    reference: list[str] | None
+    comment: str | None
+
     ref_pattern = re.compile(r"\(((?:\d{4}[a-zA-Z]{2}[a-zA-Z\d]{2}),?)+\)")
     calc_pattern = re.compile(r"[\(\)]")
     assumed_pattern = re.compile(r"[\[\]]")
@@ -485,12 +511,12 @@ class Quantity:
         # Input cleanup (limited character set only)
         if val is not None:
             val = alt_char_float(val)
-        self.val: float = float("nan")
-        self.pm: float = float("nan")
-        self.plus: float = float("nan")
-        self.minus: float = float("nan")
-        self.upper_bound: float = float("nan")
-        self.lower_bound: float = float("nan")
+        self.val = nan
+        self.pm = nan
+        self.plus = nan
+        self.minus = nan
+        self.upper_bound = nan
+        self.lower_bound = nan
         self.upper_bound_inclusive: bool | None = None
         self.lower_bound_inclusive: bool | None = None
         self.exponent = 0
@@ -556,7 +582,7 @@ class Quantity:
         frags = res.groupdict()
 
         if frags["chars"] == "STABLE":
-            self.val = float("inf")
+            self.val = inf
             self.sign = Sign.POSITIVE
             self.named = "stable"
             self.unit = get_unit("S")
@@ -640,7 +666,7 @@ class Quantity:
         if frags["comment"]:
             self.comment = frags["comment"].strip()
 
-    nubase_quantities = []
+    nubase_quantities: ClassVar[list[str]] = []
     # TODO: This need much more work!
     nubase_pattern = re.compile(
         r"""^
@@ -667,12 +693,12 @@ class Quantity:
     )
 
     @classmethod
-    def from_nubase(cls, val):
+    def from_nubase(cls, val: str) -> "Quantity | None":
         qty = cls()
         if val in ["", "=?"]:
             return
         if val == "stbl":
-            qty.val = float("inf")
+            qty.val = inf
             qty.sign = Sign.POSITIVE
             qty.named = "stable"
             qty.unit = get_unit("S")
@@ -704,65 +730,76 @@ class Quantity:
 
     def _parse_uncertainty(self, unc: str) -> float:
         if "∞" in unc:
-            return float("inf")
+            return inf
         exp = self.exponent - self.decimals
         value = abs(int(unc)) * 10 ** max(exp, 0)
         if exp < 0:
             return value / 10**-exp
         return float(value)
 
-    def set_unit(self, unit_symbol: str):
+    def set_unit(self, unit_symbol: str) -> None:
         self.unit = get_unit(unit_symbol)
 
-    def cast_to_unit(self, unit: str | Unit):
+    def cast_to_unit(self, unit: str | Unit) -> Self:
         """Cast quantity in a different unit
 
         Args:
             unit: Unit to use for the returned Quantity
+
+        Returns:
+            New Quantity in the given unit
+
+        Raises:
+            ValueError: Unknown unit symbol.
+            TypeError: Quantity has no unit, or unit dimensions mismatch.
         """
-        if not isinstance(unit, Unit):
-            unit = get_unit(unit)
+        target = unit if isinstance(unit, Unit) else get_unit(unit)
+        if target is None:
+            raise ValueError(f"Unknown unit: {unit}")
         if self.unit is None:
             raise TypeError("Quantity has no unit")
-        if self.unit.dimension != unit.dimension:
+        if self.unit.dimension != target.dimension:
             raise TypeError("Mismatching Dimensions")
-        res = self * (self.unit.basis / unit.basis)
-        assert res is not None
-        res.unit = unit
+        res = self * (self.unit.basis / target.basis)
+        res.unit = target
         # TODO: Determine number of decimal places/exponent more intelligently
         #   (already after multiplication)
-        res.decimals = int(self.decimals + math.log10(unit.basis / self.unit.basis))
+        res.decimals = int(self.decimals + math.log10(target.basis / self.unit.basis))
         if res.decimals < 0:
             res.decimals = 0
-            res.exponent = int(self.exponent + math.log10(self.unit.basis / unit.basis))
+            res.exponent = int(
+                self.exponent + math.log10(self.unit.basis / target.basis)
+            )
         return res
 
-    def __add__(self, other) -> Self | None:
-        if isinstance(other, (int, float)):
-            s = copy.copy(self)
-            s.val += other
-            return s
+    def __add__(self, other: int | float) -> Self:
+        if not isinstance(other, (int, float)):
+            return NotImplemented
+        s = copy.copy(self)
+        s.val += other
+        return s
 
-    def __mul__(self, other) -> Self | None:
+    def __mul__(self, other: int | float) -> Self:
         # TODO: Update number of decimal places/exponent
-        if isinstance(other, (int, float)):
-            s = copy.copy(self)
-            s.val *= other
-            s.plus *= other
-            s.minus *= other
-            s.pm *= other
-            s.lower_bound *= other
-            s.upper_bound *= other
-            return s
+        if not isinstance(other, (int, float)):
+            return NotImplemented
+        s = copy.copy(self)
+        s.val *= other
+        s.plus *= other
+        s.minus *= other
+        s.pm *= other
+        s.lower_bound *= other
+        s.upper_bound *= other
+        return s
 
     __radd__ = __add__
     __rmul__ = __mul__
 
-    def _format_number(self, number: float, decimal_offset: int = 0):
+    def _format_number(self, number: float, decimal_offset: int = 0) -> str:
         num = number * 10 ** (-self.exponent + decimal_offset)
         return f"{num:.{self.decimals - decimal_offset}f}"
 
-    def __str__(self):
+    def __str__(self) -> str:
         res = ""
         if self.named:
             res = self.named
@@ -814,56 +851,45 @@ class Quantity:
         res = res.replace("inf", "∞")
         return res
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<{self}>"
 
-    def __lt__(self, other):
-        if isinstance(other, (int, float)):
-            return self.val < other
-        elif isinstance(other, Quantity):
-            return self.val < other.val
+    def _comparable(self, other: "Quantity | int | float") -> float:
+        if isinstance(other, Quantity):
+            return other.val
+        return other
 
-    def __gt__(self, other):
-        if isinstance(other, (int, float)):
-            return self.val > other
-        elif isinstance(other, Quantity):
-            return self.val > other.val
+    def __lt__(self, other: "Quantity | int | float") -> bool:
+        return self.val < self._comparable(other)
 
-    def __le__(self, other):
-        if isinstance(other, (int, float)):
-            return self.val <= other
-        elif isinstance(other, Quantity):
-            return self.val <= other.val
+    def __gt__(self, other: "Quantity | int | float") -> bool:
+        return self.val > self._comparable(other)
 
-    def __ge__(self, other):
-        if isinstance(other, (int, float)):
-            return self.val >= other
-        elif isinstance(other, Quantity):
-            return self.val >= other.val
+    def __le__(self, other: "Quantity | int | float") -> bool:
+        return self.val <= self._comparable(other)
 
-    def __eq__(self, other):
-        if isinstance(other, (int, float)):
-            return self.val == other
-        elif isinstance(other, Quantity):
-            return self.val == other.val
+    def __ge__(self, other: "Quantity | int | float") -> bool:
+        return self.val >= self._comparable(other)
 
-    def __ne__(self, other):
-        if isinstance(other, (int, float)):
-            return self.val != other
-        elif isinstance(other, Quantity):
-            return self.val != other.val
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, (Quantity, int, float)):
+            return self.val == self._comparable(other)
+        return NotImplemented
 
 
-def alt_char_float(val):
+def alt_char_float(val: str) -> str:
     return val.replace("|?", "?").replace("|@", "∞").replace("INFNT", "∞").strip()
 
 
 @cache
-def get_unit(unit_symbol: str):
+def get_unit(unit_symbol: str) -> Unit | None:
     """Get Unit object by according symbol (ensdf or standard form)
 
     Args:
         unit_symbol: Symbol of unit
+
+    Returns:
+        Matching Unit or None if the symbol is unknown.
     """
     for unit in Units:
         if unit.symb == unit_symbol or unit.ensdf_symb == unit_symbol:

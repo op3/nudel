@@ -105,21 +105,23 @@ def _get_api_manifest(*, refresh: bool = False) -> Manifest:
         and cache_file.exists()
         and time.time() - cache_file.stat().st_mtime < API_CACHE_TTL
     ):
-        return json.loads(cache_file.read_text())
+        manifest: Manifest = json.loads(cache_file.read_text())
+        return manifest
 
     try:
         response = requests.get(
             ENSDF_API, headers={"User-Agent": _USER_AGENT}, timeout=30
         )
         response.raise_for_status()
-        manifest: Manifest = response.json()
+        manifest = response.json()
     except Exception:
         if cache_file.exists():
             warnings.warn(
                 "Failed to fetch NNDC manifest; using stale cache.",
                 stacklevel=2,
             )
-            return json.loads(cache_file.read_text())
+            manifest = json.loads(cache_file.read_text())
+            return manifest
         raise
 
     cache_file.parent.mkdir(parents=True, exist_ok=True)
