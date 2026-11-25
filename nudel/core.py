@@ -218,11 +218,21 @@ _FIELD_SYMBOLS = frozenset(
         "EAV",
         "FL",
         "CE",
+        "CK",
+        "CL",
+        "CM",
+        "CN",
         "ECC",
         "DCO",
         "IPC",
         "A2",
         "A4",
+        "SN",
+        "DSN",
+        "SP",
+        "DSP",
+        "QA",
+        "DQA",
     }
 )
 
@@ -238,8 +248,18 @@ _COMMENT_SYMBOL_PATTERNS = tuple(
     )
 )
 
-_COMMENT_KEY_RE = re.compile(r"[A-Z][A-Z0-9]*")
 _SYMBOL_PART_RE = re.compile(r"([^()]+?)(?:\(([^()]*)\))?")
+_PAREN_FLAGS_RE = re.compile(r"\([^()]*\)")
+_SYMBOL_LHS_RE = re.compile(r"[A-Z0-9%+\-/, .()]+")
+_SYMBOL_SPLIT_RE = re.compile(r",(?![^()]*\))")
+
+
+def _looks_like_symbol_lhs(lhs: str) -> bool:
+    """Return True when ``lhs`` looks like symbol text rather than prose."""
+    stripped = lhs.strip()
+    if not stripped or "=" in stripped:
+        return False
+    return _SYMBOL_LHS_RE.fullmatch(_PAREN_FLAGS_RE.sub("", stripped)) is not None
 
 
 def _is_comment_symbol(symbol: str) -> bool:
@@ -250,21 +270,7 @@ def _is_comment_symbol(symbol: str) -> bool:
 
 def _split_symbol_parts(lhs: str) -> list[str]:
     """Split on commas that are not nested inside parentheses."""
-    parts: list[str] = []
-    depth = 0
-    current = ""
-    for char in lhs:
-        if char == "(":
-            depth += 1
-        elif char == ")":
-            depth -= 1
-        if char == "," and depth == 0:
-            parts.append(current)
-            current = ""
-        else:
-            current += char
-    parts.append(current)
-    return parts
+    return _SYMBOL_SPLIT_RE.split(lhs)
 
 
 class ENSDF:
@@ -381,6 +387,7 @@ class Dataset:
         with contextlib.suppress(ValueError):
             self.date = datetime.strptime(self.header[74:80].strip(), "%Y%m")
         self.parsed_comments: list[Comment] = []
+        self._body_comments: list[Comment] = []
         self.header_comments: list[Comment] = []
         self.comments_by_field: dict[str, list[Comment]] = {}
         self.comments_by_flag: dict[str, list[Comment]] = {}
@@ -408,6 +415,8 @@ class Dataset:
         rec_type = get_record_type(record)
         rec = rec_type(self, record, comments, xref, level)
         self.records.append(rec)
+        if isinstance(rec, Record):
+            self._body_comments.extend(rec.parsed_comments)
         return rec
 
     def _add_level(
@@ -419,6 +428,7 @@ class Dataset:
         lvl = LevelRecord(self, record, comments, xref)
         self.levels.append(lvl)
         lvl.state_num = len(self.levels) - 1
+        self._body_comments.extend(lvl.parsed_comments)
         return lvl
 
     def _parse_dataset(self) -> None:
@@ -519,29 +529,27 @@ class Dataset:
         self.header_comments = [
             self._parse_comment_block(group) for group in self.comments
         ]
-        body_comments = [
-            comment
-            for record in (*self.records, *self.levels)
-            if isinstance(record, Record)
-            for comment in record.parsed_comments
-        ]
-        raw_order = {id(line): index for index, line in enumerate(self.raw)}
-        body_comments.sort(key=lambda comment: raw_order[id(comment.raw[0])])
-        self.parsed_comments = [*self.header_comments, *body_comments]
+        self.parsed_comments = [*self.header_comments, *self._body_comments]
         self._build_comment_indexes()
 
     def _build_comment_indexes(self) -> None:
         for comment in self.parsed_comments:
-            for symbol in comment.symbols:
-                self.comments_by_field.setdefault(symbol.field, []).append(comment)
-                for flag in symbol.flags:
-                    self.comments_by_flag.setdefault(flag, []).append(comment)
-                    self.comments_by_field_flag.setdefault(
-                        (symbol.field, flag), []
-                    ).append(comment)
+            fields = {symbol.field for symbol in comment.symbols}
+            flags = {flag for symbol in comment.symbols for flag in symbol.flags}
+            field_flags = {
+                (symbol.field, flag)
+                for symbol in comment.symbols
+                for flag in symbol.flags
+            }
+            for field in fields:
+                self.comments_by_field.setdefault(field, []).append(comment)
+            for flag in flags:
+                self.comments_by_flag.setdefault(flag, []).append(comment)
+            for field_flag in field_flags:
+                self.comments_by_field_flag.setdefault(field_flag, []).append(comment)
             if comment.label is not None:
-                for symbol in comment.symbols:
-                    self.field_labels[symbol.field] = comment.label
+                for field in fields:
+                    self.field_labels[field] = comment.label
             if comment.key is not None:
                 self.general_comments_by_key.setdefault(comment.key, []).append(comment)
 
@@ -558,25 +566,34 @@ class Dataset:
 
     def _parse_comment_block(self, block: list[str]) -> Comment:
         line = block[0]
-        kind = (line[6] if len(line) > 6 else "c").lower()
+        kind = line[6].lower()
         rtype = line[7:8].strip()
         particle = line[8:9].strip()
         rest = line[9:]
 
-        modern = "$" in rest
-        if modern:
-            lhs, rhs = rest.split("$", 1)
+        lhs = ""
+        rhs = rest
+        delimiter = False
+        if "$" in rest:
+            prefix, suffix = rest.split("$", 1)
+            if (
+                not prefix.strip()
+                or suffix.startswith("LABEL=")
+                or prefix.strip() in _KNOWN_COMMENT_KEYS
+                or self._parse_symbols(prefix) is not None
+                or _looks_like_symbol_lhs(prefix)
+            ):
+                lhs, rhs, delimiter = prefix, suffix, True
         elif (
             len(line) > 19
             and line[18] == " "
             and line[19] != " "
-            and self._is_structured_comment_lhs(line[9:19])
+            and (
+                self._parse_symbols(line[9:19]) is not None
+                or line[9:19].strip() in _KNOWN_COMMENT_KEYS
+            )
         ):
-            lhs = line[9:19]
-            rhs = line[19:]
-        else:
-            lhs = ""
-            rhs = rest
+            lhs, rhs, delimiter = line[9:19], line[19:], True
 
         continuation = [cont[9:] for cont in block[1:]]
 
@@ -585,35 +602,32 @@ class Dataset:
                 return "".join(text_pieces)
             return " ".join(piece.strip() for piece in text_pieces if piece.strip())
 
-        if modern and rhs.startswith("LABEL="):
-            label = join([rhs[len("LABEL=") :], *continuation])
-            return Comment(
-                text=label,
-                kind=cast(CommentType, kind),
-                rtype=rtype,
-                particle=particle,
-                symbols=self._parse_symbols(lhs) or (),
-                label=label,
-                raw=tuple(block),
-            )
-
         symbols = self._parse_symbols(lhs)
-        key = None
-        if symbols is None and _COMMENT_KEY_RE.fullmatch(lhs.strip()):
-            key = lhs.strip()
+        stripped_lhs = lhs.strip()
+        key = (
+            stripped_lhs
+            if symbols is None and stripped_lhs in _KNOWN_COMMENT_KEYS
+            else None
+        )
+        label = None
+        if delimiter and rhs.startswith("LABEL="):
+            label = join([rhs[len("LABEL=") :], *continuation])
+            text = label
+        else:
+            text = join([rhs, *continuation])
+        lhs_fallback = (
+            stripped_lhs if symbols is None and key is None and stripped_lhs else ""
+        )
         return Comment(
-            text=join([rhs, *continuation]),
+            text=text,
             kind=cast(CommentType, kind),
             rtype=rtype,
             particle=particle,
             symbols=symbols or (),
+            label=label,
             key=key,
+            lhs=lhs_fallback,
             raw=tuple(block),
-        )
-
-    def _is_structured_comment_lhs(self, lhs: str) -> bool:
-        return (
-            self._parse_symbols(lhs) is not None or lhs.strip() in _KNOWN_COMMENT_KEYS
         )
 
     def _parse_symbols(self, lhs: str) -> tuple[CommentSymbol, ...] | None:
@@ -656,7 +670,6 @@ class Record(BaseRecord):
     # (Parent, Normalization) pass the raw line.
     record: list[str] | str
 
-    _flag_field: ClassVar[str | None] = None
     _reserved_flags: ClassVar[frozenset[str]] = frozenset()
 
     prop: dict[str, str]
@@ -687,11 +700,8 @@ class Record(BaseRecord):
 
     @property
     def footnote_flags(self) -> list[str]:
-        raw = ""
-        if self._flag_field is not None:
-            raw += self.prop.get(self._flag_field, "")
-        raw += self.prop.get("FLAG", "")
-        return [
+        raw = self.prop.get("C", "") + self.prop.get("FLAG", "")
+        flags = [
             char
             for char in raw
             if char
@@ -699,6 +709,7 @@ class Record(BaseRecord):
             and char != ","
             and char not in self._reserved_flags
         ]
+        return list(dict.fromkeys(flags))
 
     def footnotes_for(self, field: str) -> list[Comment]:
         """Comments whose flags intersect this record's flags for ``field``."""
@@ -882,8 +893,6 @@ class NormalizationRecord(Record):
 
 
 class LevelRecord(Record):
-    _flag_field: ClassVar[str | None] = "C"
-
     energy: Quantity
     ang_mom: list[AngularMoment]
     half_life: Quantity
@@ -983,6 +992,8 @@ class DecayRecord(Record):
 
 
 class BetaRecord(DecayRecord):
+    _reserved_flags: ClassVar[frozenset[str]] = frozenset("C?")
+
     def __init__(
         self,
         dataset: Dataset,
@@ -1008,6 +1019,8 @@ class BetaRecord(DecayRecord):
 
 
 class ECRecord(DecayRecord):
+    _reserved_flags: ClassVar[frozenset[str]] = frozenset("C?")
+
     def __init__(
         self,
         dataset: Dataset,
@@ -1035,6 +1048,8 @@ class ECRecord(DecayRecord):
 
 
 class AlphaRecord(DecayRecord):
+    _reserved_flags: ClassVar[frozenset[str]] = frozenset("C?")
+
     def __init__(
         self,
         dataset: Dataset,
@@ -1093,7 +1108,6 @@ class ParticleRecord(DecayRecord):
 
 
 class GammaRecord(DecayRecord):
-    _flag_field: ClassVar[str | None] = "C"
     _reserved_flags: ClassVar[frozenset[str]] = frozenset("*&@%")
 
     orig_level: LevelRecord | None

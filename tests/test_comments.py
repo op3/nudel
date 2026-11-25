@@ -96,9 +96,32 @@ def test_titl_modern_key():
 
     comment = dataset.header_comments[0]
     assert comment.key == "TITL"
+    assert comment.lhs == ""
     assert comment.text == "Some title"
     assert comment.symbols == ()
     assert dataset.general_comments_by_key["TITL"] == [comment]
+
+
+def test_unknown_caps_modern_lhs_is_not_key():
+    dataset = _parse(_comment(" ", "c", "FOO$some text"))
+
+    comment = dataset.header_comments[0]
+    assert comment.key is None
+    assert comment.symbols == ()
+    assert comment.lhs == "FOO"
+    assert comment.text == "some text"
+    assert dataset.general_comments_by_key == {}
+
+
+def test_malformed_particle_lhs_does_not_become_key():
+    line = f"{NUCID} cDPI$other: 1.8 {{I3}} (2007Do17)".ljust(80)
+
+    dataset = _parse(line)
+
+    comment = dataset.header_comments[0]
+    assert comment.key is None
+    assert comment.symbols == ()
+    assert comment.text.startswith("other: 1.8")
 
 
 def test_t_text_preserves_spacing_and_concatenates():
@@ -253,6 +276,56 @@ def test_old_format_single_field():
     assert dataset.header_comments[0].text == "single field text"
 
 
+def test_qvalue_field_symbols_modern():
+    dataset = _parse(
+        _comment(" ", "c", "SN$source text"),
+        _comment(" ", "c", "SN,SP,QA$comma list"),
+    )
+
+    assert dataset.header_comments[0].symbols == (CommentSymbol("SN"),)
+    assert dataset.header_comments[0].key is None
+    assert dataset.header_comments[0].text == "source text"
+    assert dataset.header_comments[1].symbols == (
+        CommentSymbol("SN"),
+        CommentSymbol("SP"),
+        CommentSymbol("QA"),
+    )
+
+
+def test_ec_shell_fraction_field_symbols():
+    dataset = _parse(_comment(" ", "c", "LOGFT,CK,CL,CM,CN$text"))
+
+    comment = dataset.header_comments[0]
+    assert comment.symbols == (
+        CommentSymbol("LOGFT"),
+        CommentSymbol("CK"),
+        CommentSymbol("CL"),
+        CommentSymbol("CM"),
+        CommentSymbol("CN"),
+    )
+    assert comment.key is None
+    assert comment.lhs == ""
+    assert comment.text == "text"
+
+
+def test_ec_shell_fraction_single_symbol():
+    dataset = _parse(_comment(" ", "c", "CK$text"))
+
+    comment = dataset.header_comments[0]
+    assert comment.symbols == (CommentSymbol("CK"),)
+    assert comment.key is None
+    assert comment.lhs == ""
+    assert comment.text == "text"
+
+
+def test_qvalue_field_symbols_old_format():
+    dataset = _parse(_old_format("QA        ", "qvalue text"))
+
+    assert dataset.header_comments[0].symbols == (CommentSymbol("QA"),)
+    assert dataset.header_comments[0].key is None
+    assert dataset.header_comments[0].text == "qvalue text"
+
+
 def test_old_format_titl_key():
     dataset = _parse(_old_format("TITL      ", "general text"))
 
@@ -271,13 +344,14 @@ def test_raw_lines_are_retained_unchanged():
 
 
 def test_malformed_modern_lhs_keeps_rhs_text():
-    for lhs in ("B- EAV,LOGFT", "E, not a field", "E(A"):
+    for lhs in ("B- EAV,LOGFT", "E(A"):
         dataset = _parse(_comment(" ", "c", f"{lhs}$text"))
 
         comment = dataset.header_comments[0]
         assert comment.text == "text"
         assert comment.symbols == ()
         assert comment.key is None
+        assert comment.lhs == lhs
 
 
 def test_empty_rhs_keeps_comment():
@@ -386,6 +460,11 @@ def test_level_flag_continuation_appends_footnote_flags():
 
 GAMMA = "50019  G      156.4 4     100  [E1]                    1.28E-3 2".ljust(80)
 BETA = "50019  B      1520050     100 1              6.42     1".ljust(80)
+EC = "50019  E      1520050     100 1     100 1      6.42     1".ljust(80)
+ALPHA = "50019  A      1520050     100 1      6.42     1".ljust(80)
+PARTICLE = "50019   P     1520050     100 1".ljust(80)
+
+DECAY_RECORDS = (("B", BETA), ("E", EC), ("A", ALPHA))
 
 
 def _flag_line(rectype: str, flags: str) -> str:
@@ -420,22 +499,64 @@ def test_gamma_flag_continuation_contributes():
     assert dataset.records[0].footnote_flags == ["C", "A", "B"]
 
 
-def test_beta_c_column_is_not_a_footnote_flag():
-    beta = list(BETA)
-    beta[76] = "A"
+def test_decay_c_column_reserved_flags_are_not_footnotes():
+    for _rectype, template in DECAY_RECORDS:
+        for reserved in "C?":
+            record = list(template)
+            record[76] = reserved
 
-    dataset = _parse("".join(beta))
+            dataset = _parse("".join(record))
 
-    assert dataset.records[0].footnote_flags == []
+            assert dataset.records[0].footnote_flags == []
 
 
-def test_beta_flag_continuation_contributes():
-    beta = list(BETA)
-    beta[76] = "Z"
+def test_decay_c_column_letter_is_footnote_flag():
+    for _rectype, template in DECAY_RECORDS:
+        record = list(template)
+        record[76] = "A"
 
-    dataset = _parse("".join(beta), _flag_line("B", "AB"))
+        dataset = _parse("".join(record))
+
+        assert dataset.records[0].footnote_flags == ["A"]
+
+
+def test_decay_flag_continuation_contributes():
+    for rectype, template in DECAY_RECORDS:
+        record = list(template)
+        record[76] = "C"
+
+        dataset = _parse("".join(record), _flag_line(rectype, "AB"))
+
+        assert dataset.records[0].footnote_flags == ["A", "B"]
+
+
+def test_particle_c_column_letter_is_footnote_flag():
+    record = list(PARTICLE)
+    record[76] = "A"
+
+    dataset = _parse("".join(record))
+
+    assert dataset.records[0].footnote_flags == ["A"]
+
+
+def test_particle_flag_continuation_contributes():
+    record = list(PARTICLE)
+    record[76] = " "
+
+    dataset = _parse("".join(record), _flag_line(" ", "AB"))
 
     assert dataset.records[0].footnote_flags == ["A", "B"]
+
+
+def test_beta_footnotes_for_resolves_column_flag():
+    beta = list(BETA)
+    beta[76] = "B"
+
+    dataset = _parse(_comment(" ", "c", "IB(B)$from 22F decay"), "".join(beta))
+
+    record = dataset.records[0]
+    assert record.footnote_flags == ["B"]
+    assert [c.text for c in record.footnotes_for("IB")] == ["from 22F decay"]
 
 
 def test_flag_continuation_accepts_separators():
@@ -483,3 +604,101 @@ def test_footnotes_for_keeps_duplicate_field_flag_comments():
     first, second = dataset.comments_by_field_flag[("E", "A")]
     assert first is not second
     assert dataset.levels[0].footnotes_for("E") == [first, second]
+
+
+def test_composite_lhs_retained_verbatim():
+    dataset = _parse(_comment(" ", "c", "K/T,L/T,M+/T$text"))
+
+    comment = dataset.header_comments[0]
+    assert comment.symbols == ()
+    assert comment.key is None
+    assert comment.lhs == "K/T,L/T,M+/T"
+    assert comment.text == "text"
+
+
+def test_grouped_composite_lhs_retained_verbatim():
+    dataset = _parse(_comment(" ", "c", "(M2+M3)/M1,N1/M1$text"))
+
+    comment = dataset.header_comments[0]
+    assert comment.symbols == ()
+    assert comment.key is None
+    assert comment.lhs == "(M2+M3)/M1,N1/M1"
+    assert comment.text == "text"
+
+
+def test_valid_symbols_have_empty_lhs():
+    dataset = _parse(_comment(" ", "c", "E(E)$text"))
+
+    comment = dataset.header_comments[0]
+    assert comment.symbols == (CommentSymbol("E", ("E",)),)
+    assert comment.lhs == ""
+
+
+def test_prose_before_dollar_is_not_treated_as_lhs():
+    dataset = _parse(_comment(" ", "c", "E, not a field$text"))
+
+    comment = dataset.header_comments[0]
+    assert comment.text == "E, not a field$text"
+    assert comment.symbols == ()
+    assert comment.key is None
+    assert comment.lhs == ""
+
+
+def test_dollar_in_general_comment_is_preserved():
+    for text in ("See Fig. 3 $ for details", "Cost is $5 per sample"):
+        dataset = _parse(_comment(" ", "c", text))
+
+        comment = dataset.header_comments[0]
+        assert comment.text == text
+        assert comment.symbols == ()
+        assert comment.lhs == ""
+
+
+def test_label_comment_retains_unparsed_lhs():
+    dataset = _parse(_comment(" ", "c", "K/T,L/T$LABEL=hello"))
+
+    comment = dataset.header_comments[0]
+    assert comment.label == "hello"
+    assert comment.text == "hello"
+    assert comment.symbols == ()
+    assert comment.lhs == "K/T,L/T"
+
+
+def test_flag_index_does_not_duplicate_comments():
+    dataset = _parse(
+        _comment(" ", "c", "E(A),J(A)$shared"),
+        _comment(" ", "c", "S(AA)$repeated flag"),
+    )
+
+    assert [c.text for c in dataset.comments_by_flag["A"]] == [
+        "shared",
+        "repeated flag",
+    ]
+    assert [c.text for c in dataset.comments_for(flag="A")] == [
+        "shared",
+        "repeated flag",
+    ]
+    assert [c.text for c in dataset.comments_by_field_flag[("S", "A")]] == [
+        "repeated flag"
+    ]
+
+
+def test_footnote_flags_are_deduplicated():
+    level = list(LEVEL)
+    level[76] = "A"
+    flag_line = f"{NUCID}2 L FLAG=A".ljust(80)
+
+    dataset = _parse("".join(level), flag_line)
+
+    assert dataset.levels[0].footnote_flags == ["A"]
+
+
+def test_parsed_comments_preserve_file_order():
+    dataset = _parse(
+        LEVEL,
+        _comment(" ", "c", "E$first"),
+        GAMMA,
+        _comment(" ", "c", "RI$second"),
+    )
+
+    assert [c.text for c in dataset.parsed_comments] == ["first", "second"]
