@@ -656,6 +656,9 @@ class Record(BaseRecord):
     # (Parent, Normalization) pass the raw line.
     record: list[str] | str
 
+    _flag_field: ClassVar[str | None] = None
+    _reserved_flags: ClassVar[frozenset[str]] = frozenset()
+
     prop: dict[str, str]
     xref: dict[str, XReference]
     comments: list[GeneralCommentRecord]
@@ -681,6 +684,32 @@ class Record(BaseRecord):
             self.parsed_comments = [
                 dataset._parse_comment_block(group) for group in comments
             ]
+
+    @property
+    def footnote_flags(self) -> list[str]:
+        raw = ""
+        if self._flag_field is not None:
+            raw += self.prop.get(self._flag_field, "")
+        raw += self.prop.get("FLAG", "")
+        return [
+            char
+            for char in raw
+            if char
+            and not char.isspace()
+            and char != ","
+            and char not in self._reserved_flags
+        ]
+
+    def footnotes_for(self, field: str) -> list[Comment]:
+        """Comments whose flags intersect this record's flags for ``field``."""
+        result: list[Comment] = []
+        seen: set[int] = set()
+        for flag in self.footnote_flags:
+            for comment in self.dataset.comments_by_field_flag.get((field, flag), []):
+                if id(comment) not in seen:
+                    seen.add(id(comment))
+                    result.append(comment)
+        return result
 
     def parse_xref(self) -> None:
         self.xref = {}
@@ -853,6 +882,8 @@ class NormalizationRecord(Record):
 
 
 class LevelRecord(Record):
+    _flag_field: ClassVar[str | None] = "C"
+
     energy: Quantity
     ang_mom: list[AngularMoment]
     half_life: Quantity
@@ -867,7 +898,6 @@ class LevelRecord(Record):
     decay_ratio: dict[str, Quantity]
     spec_strength: list[Quantity]
     index: int | None
-    footnote_flags: list[str]
 
     def __init__(
         self,
@@ -926,10 +956,6 @@ class LevelRecord(Record):
                 s.calculated = True
 
         self.index = self.dataset.add_jpi(self)
-
-        self.footnote_flags = list(self.prop["C"])
-        if "FLAG" in self.prop:
-            self.footnote_flags += list(self.prop["FLAG"])
 
     def add_decay(self, decay):
         self.decays.append(decay)
@@ -1067,6 +1093,9 @@ class ParticleRecord(DecayRecord):
 
 
 class GammaRecord(DecayRecord):
+    _flag_field: ClassVar[str | None] = "C"
+    _reserved_flags: ClassVar[frozenset[str]] = frozenset("*&@%")
+
     orig_level: LevelRecord | None
     dest_level: LevelRecord | None
     rel_intensity: Quantity

@@ -382,3 +382,104 @@ def test_level_flag_continuation_appends_footnote_flags():
     dataset = _parse("".join(level), flag_line)
 
     assert dataset.levels[0].footnote_flags == ["C", "A", "B"]
+
+
+GAMMA = "50019  G      156.4 4     100  [E1]                    1.28E-3 2".ljust(80)
+BETA = "50019  B      1520050     100 1              6.42     1".ljust(80)
+
+
+def _flag_line(rectype: str, flags: str) -> str:
+    return f"{NUCID}2 {rectype} FLAG={flags}".ljust(80)
+
+
+def test_gamma_c_column_flags_ignore_reserved_symbols():
+    for reserved in "*&@%":
+        gamma = list(GAMMA)
+        gamma[76] = reserved
+
+        dataset = _parse("".join(gamma))
+
+        assert dataset.records[0].footnote_flags == []
+
+
+def test_gamma_c_column_letter_is_footnote_flag():
+    gamma = list(GAMMA)
+    gamma[76] = "A"
+
+    dataset = _parse("".join(gamma))
+
+    assert dataset.records[0].footnote_flags == ["A"]
+
+
+def test_gamma_flag_continuation_contributes():
+    gamma = list(GAMMA)
+    gamma[76] = "C"
+
+    dataset = _parse("".join(gamma), _flag_line("G", "AB"))
+
+    assert dataset.records[0].footnote_flags == ["C", "A", "B"]
+
+
+def test_beta_c_column_is_not_a_footnote_flag():
+    beta = list(BETA)
+    beta[76] = "A"
+
+    dataset = _parse("".join(beta))
+
+    assert dataset.records[0].footnote_flags == []
+
+
+def test_beta_flag_continuation_contributes():
+    beta = list(BETA)
+    beta[76] = "Z"
+
+    dataset = _parse("".join(beta), _flag_line("B", "AB"))
+
+    assert dataset.records[0].footnote_flags == ["A", "B"]
+
+
+def test_flag_continuation_accepts_separators():
+    for flags in ("AB", "A,B", "A B"):
+        level = list(LEVEL)
+        level[76] = "C"
+
+        dataset = _parse("".join(level), _flag_line("L", flags))
+
+        assert dataset.levels[0].footnote_flags == ["C", "A", "B"]
+
+
+def test_footnotes_for_resolves_by_field_and_flag():
+    level = list(LEVEL)
+    level[76] = "E"
+
+    dataset = _parse(
+        _comment(" ", "c", "E(E)$first"),
+        _comment(" ", "c", "RI(E)$second"),
+        "".join(level),
+    )
+
+    record = dataset.levels[0]
+    assert [c.text for c in record.footnotes_for("E")] == ["first"]
+    assert [c.text for c in record.footnotes_for("RI")] == ["second"]
+    assert record.footnotes_for("J") == []
+
+
+def test_footnotes_for_without_flags_is_empty():
+    dataset = _parse(_comment(" ", "c", "E(A)$first"), LEVEL)
+
+    assert dataset.levels[0].footnotes_for("E") == []
+
+
+def test_footnotes_for_keeps_duplicate_field_flag_comments():
+    level = list(LEVEL)
+    level[76] = "A"
+
+    dataset = _parse(
+        _comment(" ", "c", "E(A)$first"),
+        _comment(" ", "c", "E(A)$second"),
+        "".join(level),
+    )
+
+    first, second = dataset.comments_by_field_flag[("E", "A")]
+    assert first is not second
+    assert dataset.levels[0].footnotes_for("E") == [first, second]
