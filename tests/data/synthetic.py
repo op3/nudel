@@ -35,7 +35,7 @@ from __future__ import annotations
 ADOPTED_LEVELS_50019 = """\
 50019    ADOPTED LEVELS, GAMMAS                                  2026SM01 202601
 50019 c  Synthetic ENSDF fixture: fictitious superheavy nucleus (Z=119, A=500). 
-500191c  All values are invented; no real ENSDF data is represented here.       
+500192c  All values are invented; no real ENSDF data is represented here.       
 50019  H TYP=FUL$AUT=J. Smith$DAT=2026$                                         
 50019  Q     -1500050    420030    580040    3200    60                 2026SM01
 50019  XA500OG B- DECAY                                                         

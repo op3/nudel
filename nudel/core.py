@@ -29,8 +29,9 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from datetime import datetime
 from types import TracebackType
-from typing import ClassVar
+from typing import ClassVar, cast
 
+from .comments import Comment, CommentSymbol, CommentType
 from .provider import (
     DatasetKey,
     ENSDFFileProvider,
@@ -173,6 +174,98 @@ REFERENCE_FIELDS = (
     ("REFERENCE", 17, 80),
 )
 
+_KNOWN_COMMENT_KEYS = frozenset(
+    {
+        "TITL",
+        "AUTH",
+        "INST",
+        "ABST",
+        "CUT",
+        "COMM",
+        "ACKN",
+        "PERM",
+        "FUND",
+        "CIT",
+        "DICT",
+    }
+)
+
+_FIELD_SYMBOLS = frozenset(
+    name
+    for fields in (
+        QVALUE_FIELDS,
+        PARENT_FIELDS,
+        NORMALIZATION_FIELDS,
+        LEVEL_FIELDS,
+        BETA_FIELDS,
+        EC_FIELDS,
+        ALPHA_FIELDS,
+        PARTICLE_FIELDS,
+        GAMMA_FIELDS,
+    )
+    for name, _, _ in fields
+) | frozenset(
+    {
+        "BAND",
+        "SEQ",
+        "ION",
+        "CONF",
+        "FLAG",
+        "G",
+        "ISPIN",
+        "ISPINZ",
+        "XREF",
+        "EAV",
+        "FL",
+        "CE",
+        "ECC",
+        "DCO",
+        "IPC",
+        "A2",
+        "A4",
+    }
+)
+
+_COMMENT_SYMBOL_PATTERNS = tuple(
+    re.compile(pattern).fullmatch
+    for pattern in (
+        r"%[A-Z0-9+\-]+",
+        r"B[EM]?\d+W?",
+        r"WIDTH[A-Z0-9]*",
+        r"MOM[EM]\d+",
+        r"(?:E)?[KLMNO](?:\d+C?|C)",
+        r"CE[KLMNO]?",
+    )
+)
+
+_COMMENT_KEY_RE = re.compile(r"[A-Z][A-Z0-9]*")
+_SYMBOL_PART_RE = re.compile(r"([^()]+?)(?:\(([^()]*)\))?")
+
+
+def _is_comment_symbol(symbol: str) -> bool:
+    if symbol in _FIELD_SYMBOLS:
+        return True
+    return any(pattern(symbol) for pattern in _COMMENT_SYMBOL_PATTERNS)
+
+
+def _split_symbol_parts(lhs: str) -> list[str]:
+    """Split on commas that are not nested inside parentheses."""
+    parts: list[str] = []
+    depth = 0
+    current = ""
+    for char in lhs:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        if char == "," and depth == 0:
+            parts.append(current)
+            current = ""
+        else:
+            current += char
+    parts.append(current)
+    return parts
+
 
 class ENSDF:
     active_ensdf: ClassVar[ENSDF | None] = None
@@ -287,10 +380,13 @@ class Dataset:
         self.date: datetime | None = None
         with contextlib.suppress(ValueError):
             self.date = datetime.strptime(self.header[74:80].strip(), "%Y%m")
-        self.formatted_general_comments = []
-        self.alternative_labels = {}
-        self.field_footnotes = {}
-        self.specific_footnotes = {}
+        self.parsed_comments: list[Comment] = []
+        self.header_comments: list[Comment] = []
+        self.comments_by_field: dict[str, list[Comment]] = {}
+        self.comments_by_flag: dict[str, list[Comment]] = {}
+        self.comments_by_field_flag: dict[tuple[str, str], list[Comment]] = {}
+        self.general_comments_by_key: dict[str, list[Comment]] = {}
+        self.field_labels: dict[str, str] = {}
         self.records: list[BaseRecord] = []
         self.levels: list[LevelRecord] = []
         self.history: dict[str, str] = {}
@@ -332,50 +428,19 @@ class Dataset:
         level: LevelRecord | None = None
         history = ""
         header = True
-        last_field: TextField | None = None
 
         for line in self.raw[:-1]:
             flag_cont, flag_com, flag_rectype, flag_particle = line[5:9]
             if header:
                 if flag_com.lower() in "cdt":
-                    if flag_cont != " ":
+                    if flag_cont not in (" ", "1"):
                         try:
                             self.comments[-1].append(line)
                         except IndexError:
                             self.comments.append([line])
-
-                        if last_field is None:
-                            raise ValueError(
-                                "Continuation line with no preceding field"
-                            )
-                        last_field.append(line[9:].strip())
                         continue
 
-                    if "$LABEL=" in line:
-                        split_dollar = line[9:].split("$", 1)
-                        text = None
-                        self.alternative_labels[split_dollar[0]] = (
-                            split_dollar[1].removeprefix("LABEL=").strip()
-                        )
-                    elif "$" in line:
-                        split_dollar = line[9:].split("$", 1)
-                        text = self._parse_potential_footnote(
-                            split_dollar[0], split_dollar[1], line, flag_com
-                        )
-                    elif line[18] == " " and line[19] != " ":
-                        split_space = [line[9:19], line[19:]]
-                        text = self._parse_potential_footnote(
-                            split_space[0], split_space[1], line, flag_com
-                        )
-                    else:
-                        if flag_com.lower() != "t":
-                            text = TextField(line[9:].strip())
-                        else:
-                            text = TextField(line[9:])
-                        self.formatted_general_comments.append((text, flag_com))
-
                     self.comments.append([line])
-                    last_field = text
                 else:
                     if flag_rectype in "BAGEL" or (
                         flag_rectype in " D" and flag_particle in "PAN"
@@ -418,7 +483,7 @@ class Dataset:
                 elif flag_com == " ":
                     record.append(line)
                 elif flag_com.lower() in "cdt":
-                    if flag_cont != " ":
+                    if flag_cont not in (" ", "1"):
                         try:
                             comments[-1].append(line)
                         except IndexError:
@@ -451,15 +516,125 @@ class Dataset:
                 # TODO: Maybe wrong linebreak?
                 pass
 
-        for key, val in self.field_footnotes.items():
-            self.field_footnotes[key] = str(val)
-        for key, val in self.specific_footnotes.items():
-            self.specific_footnotes[key] = (val[0], str(val[1]))
-        for i in range(0, len(self.formatted_general_comments)):
-            self.formatted_general_comments[i] = (
-                str(self.formatted_general_comments[i][0]),
-                self.formatted_general_comments[i][1],
+        self.header_comments = [
+            self._parse_comment_block(group) for group in self.comments
+        ]
+        body_comments = [
+            comment
+            for record in (*self.records, *self.levels)
+            if isinstance(record, Record)
+            for comment in record.parsed_comments
+        ]
+        raw_order = {id(line): index for index, line in enumerate(self.raw)}
+        body_comments.sort(key=lambda comment: raw_order[id(comment.raw[0])])
+        self.parsed_comments = [*self.header_comments, *body_comments]
+        self._build_comment_indexes()
+
+    def _build_comment_indexes(self) -> None:
+        for comment in self.parsed_comments:
+            for symbol in comment.symbols:
+                self.comments_by_field.setdefault(symbol.field, []).append(comment)
+                for flag in symbol.flags:
+                    self.comments_by_flag.setdefault(flag, []).append(comment)
+                    self.comments_by_field_flag.setdefault(
+                        (symbol.field, flag), []
+                    ).append(comment)
+            if comment.label is not None:
+                for symbol in comment.symbols:
+                    self.field_labels[symbol.field] = comment.label
+            if comment.key is not None:
+                self.general_comments_by_key.setdefault(comment.key, []).append(comment)
+
+    def comments_for(
+        self, field: str | None = None, flag: str | None = None
+    ) -> list[Comment]:
+        if field is not None and flag is not None:
+            return list(self.comments_by_field_flag.get((field, flag), []))
+        if field is not None:
+            return list(self.comments_by_field.get(field, []))
+        if flag is not None:
+            return list(self.comments_by_flag.get(flag, []))
+        return list(self.parsed_comments)
+
+    def _parse_comment_block(self, block: list[str]) -> Comment:
+        line = block[0]
+        kind = (line[6] if len(line) > 6 else "c").lower()
+        rtype = line[7:8].strip()
+        particle = line[8:9].strip()
+        rest = line[9:]
+
+        modern = "$" in rest
+        if modern:
+            lhs, rhs = rest.split("$", 1)
+        elif (
+            len(line) > 19
+            and line[18] == " "
+            and line[19] != " "
+            and self._is_structured_comment_lhs(line[9:19])
+        ):
+            lhs = line[9:19]
+            rhs = line[19:]
+        else:
+            lhs = ""
+            rhs = rest
+
+        continuation = [cont[9:] for cont in block[1:]]
+
+        def join(text_pieces: list[str]) -> str:
+            if kind == "t":
+                return "".join(text_pieces)
+            return " ".join(piece.strip() for piece in text_pieces if piece.strip())
+
+        if modern and rhs.startswith("LABEL="):
+            label = join([rhs[len("LABEL=") :], *continuation])
+            return Comment(
+                text=label,
+                kind=cast(CommentType, kind),
+                rtype=rtype,
+                particle=particle,
+                symbols=self._parse_symbols(lhs) or (),
+                label=label,
+                raw=tuple(block),
             )
+
+        symbols = self._parse_symbols(lhs)
+        key = None
+        if symbols is None and _COMMENT_KEY_RE.fullmatch(lhs.strip()):
+            key = lhs.strip()
+        return Comment(
+            text=join([rhs, *continuation]),
+            kind=cast(CommentType, kind),
+            rtype=rtype,
+            particle=particle,
+            symbols=symbols or (),
+            key=key,
+            raw=tuple(block),
+        )
+
+    def _is_structured_comment_lhs(self, lhs: str) -> bool:
+        return (
+            self._parse_symbols(lhs) is not None or lhs.strip() in _KNOWN_COMMENT_KEYS
+        )
+
+    def _parse_symbols(self, lhs: str) -> tuple[CommentSymbol, ...] | None:
+        symbols: list[CommentSymbol] = []
+        for part in _split_symbol_parts(lhs):
+            match = _SYMBOL_PART_RE.fullmatch(part.strip())
+            if match is None:
+                return None
+            field = match.group(1).strip()
+            if not _is_comment_symbol(field):
+                return None
+            raw_flags = match.group(2)
+            flags: tuple[str, ...] = ()
+            if raw_flags is not None:
+                flags = tuple(
+                    char
+                    for char in raw_flags
+                    if not char.isspace() and char not in ",()"
+                )
+            symbols.append(CommentSymbol(field, flags))
+        return tuple(symbols)
 
     def add_jpi(self, level: LevelRecord) -> int | None:
         for ang_mom in level.ang_mom:
@@ -470,63 +645,6 @@ class Dataset:
 
     def __repr__(self):
         return f"<{self.__class__.__name__}: {self.nucid} ({self.dataset_id})>"
-
-    def _parse_potential_footnote(
-        self, lhs: str, rhs: str, line: str, flag_com: str
-    ) -> TextField:
-        # Work out if it's just a really short comment
-        if rhs.strip() == "":
-            if flag_com.lower() != "t":
-                text = TextField(line[9:].strip())
-            else:
-                text = TextField(line[9:])
-            self.formatted_general_comments.append((text, flag_com))
-
-        # Bracket indicates a footnote between the brackets - try to extract.
-        # Note that multiple letters correspond to individual footnotes with
-        # the same text that applies to different field combinations
-        elif "(" in lhs:
-            match = re.findall(r"([A-Z]+)\(([A-Za-z0-9,\s]+)\)", lhs)
-            if match is not None:
-                fields = [x[0] for x in match]
-                footnote_label_combinations = [x[1] for x in match]
-                text = TextField(rhs.strip())
-                for field, labels in zip(
-                    fields, footnote_label_combinations, strict=False
-                ):
-                    for label in labels:
-                        if label in self.specific_footnotes:
-                            self.specific_footnotes[label] = (
-                                self.specific_footnotes[label][0] + [field],
-                                text,
-                            )
-                        else:
-                            self.specific_footnotes[label] = ([field], text)
-            else:
-                raise ValueError(f"Cannot match footnotes {lhs[0]}")
-
-        # Now check if there are commas in the lhs or not - indicates a field footnote
-        elif "," in lhs:
-            fields = lhs.split(",")
-            text = TextField(rhs.strip())
-            for field in fields[:-1]:
-                self.field_footnotes[field] = TextField(rhs.strip())
-            self.field_footnotes[fields[-1]] = text
-
-        # Now check if it's just a single field footnote - i.e. a single letter
-        elif len(lhs.strip()) == 1:
-            text = TextField(rhs.strip())
-            self.field_footnotes[lhs.strip()] = text
-
-        # Just a regular comment that happened to have a blank in just the right place
-        else:
-            if flag_com.lower() != "t":
-                text = TextField(line[9:].strip())
-            else:
-                text = TextField(line[9:])
-            self.formatted_general_comments.append((text, flag_com))
-
-        return text
 
 
 class BaseRecord:
@@ -541,6 +659,7 @@ class Record(BaseRecord):
     prop: dict[str, str]
     xref: dict[str, XReference]
     comments: list[GeneralCommentRecord]
+    parsed_comments: list[Comment]
 
     def __init__(
         self,
@@ -553,36 +672,15 @@ class Record(BaseRecord):
         self.record = record
         self.dataset = dataset
         self.comments = []
-        self.formatted_comments = []
+        self.parsed_comments = []
         self._xref = xref
         self.parse_xref()
         if comments:
             for comment in comments:
                 self.comments.append(GeneralCommentRecord(dataset, comment))
-            current_comment = ""
-            flag_com = " "
-            for list_of_comments in comments:
-                for comment in list_of_comments:
-                    flag_cont, flag_com = comment[5:7]
-
-                    if flag_cont != " ":
-                        if flag_com != "t":
-                            current_comment += " " + comment[9:].lstrip(
-                                "$"
-                            ).strip().replace("$", ":")
-                        else:
-                            current_comment += comment[9:]
-                    else:
-                        if current_comment != "":
-                            self.formatted_comments.append((current_comment, flag_com))
-                        if flag_com != "t":
-                            current_comment = (
-                                comment[9:].lstrip("$").strip().replace("$", ":")
-                            )
-                        else:
-                            current_comment = comment[9:]
-
-            self.formatted_comments.append((current_comment, flag_com))
+            self.parsed_comments = [
+                dataset._parse_comment_block(group) for group in comments
+            ]
 
     def parse_xref(self) -> None:
         self.xref = {}
@@ -769,6 +867,7 @@ class LevelRecord(Record):
     decay_ratio: dict[str, Quantity]
     spec_strength: list[Quantity]
     index: int | None
+    footnote_flags: list[str]
 
     def __init__(
         self,
@@ -1323,24 +1422,6 @@ class AngularMoment:
                 return abs(self.val - float(other[0])) < 0.1
             return self.ang_mom == other[0]
         return NotImplemented
-
-
-class TextField:
-    """A mutable box for a string that may be built across multiple lines"""
-
-    __slots__ = ("lines",)
-
-    def __init__(self, first_line: str) -> None:
-        self.lines = [first_line]
-
-    def append(self, line: str) -> None:
-        self.lines.append(line)
-
-    def __str__(self) -> str:
-        return " ".join(self.lines)
-
-    def __repr__(self) -> str:
-        return f"TextField({str(self)!r})"
 
 
 def get_active_ensdf(version: str = "latest") -> ENSDF:
