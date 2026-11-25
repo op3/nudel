@@ -21,7 +21,15 @@
 
 __version__ = "0.0.1"
 
+from .comments import Comment as Comment
+from .comments import CommentSymbol as CommentSymbol
 from .core import Nuclide as Nuclide
 from .core import get_active_ensdf as get_active_ensdf
 
-__all__ = ["Nuclide", "get_active_ensdf", "__version__"]
+__all__ = [
+    "Nuclide",
+    "Comment",
+    "CommentSymbol",
+    "get_active_ensdf",
+    "__version__",
+]
