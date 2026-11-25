@@ -12,7 +12,10 @@ The data are organized in a special data format that is described [here](https:/
 Nudel is an attempt to read those files such that the relevant information can be easily accessed using Python,
 without having to worry about the details of the (complicated) data format.
 The specification is quite extensive, and thus, the present approach is currently limited to only a few important quantities.
-Especially cross-references and comments are not yet properly resolved.
+Comments and footnotes are parsed and retained, including their raw lines, and indexed by field and flag.
+Body comments are attached to the preceding record; header comments stay on the dataset.
+Translation of ENSDF CTEXT markup (such as `{+19}F`, `|g`, or `|s`) into Unicode or LaTeX is still left to the user.
+Cross-references are not yet properly resolved.
 
 ## Obtaining nuclear datasets
 
@@ -75,6 +78,28 @@ This is a minimal usage example, documentation will be improved in a future vers
 from nudel import Nuclide
 
 molybdenum94 = Nuclide(94, 42)
+```
+
+## Comments and footnotes
+
+Comments are available on the dataset and on the preceding record. Each
+`Comment` keeps the parsed text, its type, referenced field symbols and flags,
+and the original raw lines. `Comment.raw` preserves the original lines verbatim;
+`text` is whitespace-normalised for `c`/`d` comments and kept verbatim for `t`
+comments. `Comment.symbols` is best-effort; unparsed or composite LHS values are
+retained verbatim in `Comment.lhs`.
+
+```python
+dataset = molybdenum94.adopted_levels
+
+dataset.parsed_comments          # all comments, in file order
+dataset.header_comments          # comments from the dataset header
+dataset.comments_for("E", "E")   # filter by field and/or flag
+
+for level in dataset.levels:
+    level.parsed_comments        # body comments following this record
+    level.footnote_flags         # flags attached to this record
+    level.footnotes_for("E")     # footnotes for field E given those flags
 ```
 
 ## Examples
